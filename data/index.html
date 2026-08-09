@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101a17">
+    <title>Pedal-Kino</title>
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <a class="brand" href="#overview" aria-label="Pedal-Kino Übersicht">
+        <span class="brand-mark" aria-hidden="true">P</span>
+        <span><strong>Pedal-Kino</strong><small>Energie gemeinsam erleben</small></span>
+      </a>
+      <div id="connection-status" class="connection-status" data-state="connecting">
+        <span class="status-dot"></span><span class="status-label">Verbinde …</span>
+      </div>
+    </header>
+
+    <nav class="view-nav" aria-label="Ansicht wählen">
+      <button type="button" data-view="settings">Einstellungen</button>
+      <button type="button" data-view="overview" class="active">Übersicht</button>
+      <button type="button" data-view="bike-1">Bike 1</button>
+      <button type="button" data-view="bike-2">Bike 2</button>
+      <button type="button" data-view="bike-3">Bike 3</button>
+      <button type="button" data-view="bike-4">Bike 4</button>
+    </nav>
+
+    <main>
+      <section id="view-overview" class="view active" aria-labelledby="overview-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Live-System</p><h1 id="overview-title">Gemeinsam läuft der Film.</h1></div>
+          <p id="last-update" class="last-update">Noch keine Messwerte</p>
+        </div>
+
+        <div class="system-grid">
+          <article class="battery-card panel">
+            <div id="battery-ring" class="battery-ring" style="--value: 0">
+              <div><strong id="battery-percent">–</strong><span>%</span><small>Akku</small></div>
+            </div>
+            <div class="battery-copy">
+              <span id="flow-badge" class="flow-badge" data-state="balanced">Bereit</span>
+              <h2 id="remaining-time">Restzeit wird berechnet</h2>
+              <p><span id="battery-voltage">–</span> V · <span id="battery-current">–</span> A</p>
+            </div>
+          </article>
+
+          <article class="metric-card panel">
+            <span class="metric-icon generated" aria-hidden="true">↗</span>
+            <div><small>Gerade erzeugt</small><strong><span id="generated-power">0</span> W</strong></div>
+          </article>
+          <article class="metric-card panel">
+            <span class="metric-icon consumed" aria-hidden="true">▶</span>
+            <div><small>Verbrauch Beamer</small><strong><span id="load-power">0</span> W</strong></div>
+          </article>
+          <article class="metric-card panel">
+            <span class="metric-icon clients" aria-hidden="true">●</span>
+            <div><small>Verbundene Geräte</small><strong id="client-count">0</strong></div>
+          </article>
+        </div>
+
+        <div class="subheading"><div><p class="eyebrow">Fahrräder</p><h2>Wer tritt wie viel?</h2></div><p>Leistung der letzten Minute</p></div>
+        <div id="bike-grid" class="bike-grid"></div>
+      </section>
+
+      <section id="view-bike" class="view" aria-live="polite">
+        <div id="bike-detail"></div>
+      </section>
+
+      <section id="view-settings" class="view" aria-labelledby="settings-title">
+        <div class="section-heading">
+          <div><p class="eyebrow">Konfiguration</p><h1 id="settings-title">Einstellungen</h1></div>
+        </div>
+
+        <div class="settings-layout">
+          <article class="panel settings-card">
+            <div class="setting-copy"><h2>Datenquelle</h2><p>Im Demomodus entstehen realistische Testwerte direkt im Browser.</p></div>
+            <label class="switch"><input id="demo-mode" type="checkbox"><span></span><b>Demo</b></label>
+          </article>
+
+          <article class="panel settings-card vertical">
+            <div class="setting-copy"><h2>Aktive Fahrradplätze</h2><p>Alle vier Kanäle sind vorhanden. Deaktivierte Plätze erscheinen nicht in der Live-Auswertung.</p></div>
+            <div id="bike-settings" class="bike-settings"></div>
+          </article>
+
+          <article class="panel settings-card info-card">
+            <div class="setting-copy"><h2>Verbindung</h2><p>Smartphones verbinden sich direkt mit dem Access Point des ESP32.</p></div>
+            <dl><div><dt>WLAN</dt><dd>Pedal-Kino</dd></div><div><dt>Adresse</dt><dd>192.168.4.1</dd></div><div><dt>WebSocket</dt><dd>/ws</dd></div></dl>
+          </article>
+        </div>
+        <button id="save-settings" class="primary-button" type="button">Einstellungen speichern</button>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -9,39 +9,36 @@
   </head>
   <body>
     <header class="app-header">
-      <a class="brand" href="#overview" aria-label="Pedal-Kino Übersicht">
-        <span class="brand-mark" aria-hidden="true">P</span>
-        <span><strong>Pedal-Kino</strong><small>Energie gemeinsam erleben</small></span>
-      </a>
+      <div class="header-start">
+        <button id="menu-toggle" class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Navigation öffnen"><span></span><span></span><span></span></button>
+        <a class="brand" href="#overview" aria-label="Pedal-Kino Übersicht">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span><strong>Pedal-Kino</strong><small>Energie gemeinsam erleben</small></span>
+        </a>
+      </div>
       <div id="connection-status" class="connection-status" data-state="connecting">
         <span class="status-dot"></span><span class="status-label">Verbinde …</span>
       </div>
     </header>
 
-    <nav class="view-nav" aria-label="Ansicht wählen">
-      <button type="button" data-view="settings">Einstellungen</button>
+    <nav id="main-navigation" class="view-nav" aria-label="Ansicht wählen">
       <button type="button" data-view="overview" class="active">Übersicht</button>
       <button type="button" data-view="bike-1">Bike 1</button>
       <button type="button" data-view="bike-2">Bike 2</button>
       <button type="button" data-view="bike-3">Bike 3</button>
       <button type="button" data-view="bike-4">Bike 4</button>
+      <button type="button" data-view="ranking">Rangliste</button>
+      <button type="button" data-view="settings">Einstellungen</button>
     </nav>
 
     <main>
-      <section id="view-overview" class="view active" aria-labelledby="overview-title">
-        <div class="section-heading">
-          <div><p class="eyebrow">Live-System</p><h1 id="overview-title">Gemeinsam läuft der Film.</h1></div>
-          <p id="last-update" class="last-update">Noch keine Messwerte</p>
-        </div>
-
+      <section id="view-overview" class="view active" aria-label="Übersicht">
         <div class="system-grid">
           <article class="battery-card panel">
-            <div id="battery-ring" class="battery-ring" style="--value: 0">
-              <div><strong id="battery-percent">–</strong><span>%</span><small>Akku</small></div>
-            </div>
+            <div id="battery-flow-gauge" class="battery-flow-gauge"></div>
             <div class="battery-copy">
-              <span id="flow-badge" class="flow-badge" data-state="balanced">Bereit</span>
-              <h2 id="remaining-time">Restzeit wird berechnet</h2>
+              <span id="flow-badge" class="flow-badge" data-state="unknown">Sensor nicht kalibriert</span>
+              <h2><span id="battery-power">–</span> W</h2>
               <p><span id="battery-voltage">–</span> V · <span id="battery-current">–</span> A</p>
             </div>
           </article>
@@ -54,13 +51,8 @@
             <span class="metric-icon consumed" aria-hidden="true">▶</span>
             <div><small>Verbrauch Beamer</small><strong><span id="load-power">0</span> W</strong></div>
           </article>
-          <article class="metric-card panel">
-            <span class="metric-icon clients" aria-hidden="true">●</span>
-            <div><small>Verbundene Geräte</small><strong id="client-count">0</strong></div>
-          </article>
         </div>
 
-        <div class="subheading"><div><p class="eyebrow">Fahrräder</p><h2>Wer tritt wie viel?</h2></div><p>Leistung der letzten Minute</p></div>
         <div id="bike-grid" class="bike-grid"></div>
       </section>
 
@@ -68,12 +60,26 @@
         <div id="bike-detail"></div>
       </section>
 
+      <section id="view-ranking" class="view" aria-labelledby="ranking-title">
+        <div class="section-heading compact-heading">
+          <div><p class="eyebrow">Alle Fahrer</p><h1 id="ranking-title">Rangliste</h1></div>
+          <button id="reset-ranking" class="ranking-reset" type="button">Rangliste zurücksetzen</button>
+        </div>
+        <div id="ranking-list" class="ranking-list"></div>
+      </section>
+
       <section id="view-settings" class="view" aria-labelledby="settings-title">
         <div class="section-heading">
           <div><p class="eyebrow">Konfiguration</p><h1 id="settings-title">Einstellungen</h1></div>
         </div>
 
-        <div class="settings-layout">
+        <nav class="settings-subnav" aria-label="Einstellungsbereich">
+          <button type="button" class="active" data-settings-pane="general">Allgemein</button>
+          <button type="button" data-settings-pane="calibration">Kalibrieren 🔒</button>
+        </nav>
+
+        <section id="settings-general" class="settings-pane active">
+          <div class="settings-layout">
           <article class="panel settings-card">
             <div class="setting-copy"><h2>Datenquelle</h2><p>Im Demomodus entstehen realistische Testwerte direkt im Browser.</p></div>
             <label class="switch"><input id="demo-mode" type="checkbox"><span></span><b>Demo</b></label>
@@ -84,12 +90,46 @@
             <div id="bike-settings" class="bike-settings"></div>
           </article>
 
-          <article class="panel settings-card info-card">
-            <div class="setting-copy"><h2>Verbindung</h2><p>Smartphones verbinden sich direkt mit dem Access Point des ESP32.</p></div>
-            <dl><div><dt>WLAN</dt><dd>Pedal-Kino</dd></div><div><dt>Adresse</dt><dd>192.168.4.1</dd></div><div><dt>WebSocket</dt><dd>/ws</dd></div></dl>
+          <article class="panel settings-card vertical">
+            <div class="setting-copy"><h2>Heim-WLAN</h2><p>Neue Zugangsdaten werden dauerhaft im ESP32 gespeichert. Nach dem Speichern startet er neu. Ist dieses WLAN nicht erreichbar, öffnet er wieder den Access Point „Pedal-Kino“.</p></div>
+            <div class="wifi-fields">
+              <label><span>WLAN-Name (SSID)</span><input id="wifi-ssid" type="text" maxlength="32" autocomplete="off" placeholder="z. B. MeinWLAN"></label>
+              <label><span>Passwort</span><input id="wifi-password" type="password" maxlength="63" autocomplete="new-password" placeholder="WLAN-Passwort"></label>
+            </div>
           </article>
-        </div>
-        <button id="save-settings" class="primary-button" type="button">Einstellungen speichern</button>
+
+          <article class="panel settings-card info-card">
+            <div class="setting-copy"><h2>Verbindung</h2><p>Aktueller Netzwerkstatus des ESP32.</p></div>
+            <dl><div><dt>Modus</dt><dd id="network-mode">–</dd></div><div><dt>WLAN</dt><dd id="network-ssid">–</dd></div><div><dt>Adresse</dt><dd id="network-address">–</dd></div><div><dt>Verbundene Geräte</dt><dd id="client-count">0</dd></div><div><dt>WebSocket</dt><dd>/ws</dd></div></dl>
+          </article>
+
+            <article class="panel settings-card vertical">
+            <div class="setting-copy"><h2>ADC-Rohwerte</h2><p>Live-Mittelwert sowie Minimum und Maximum aus dem jeweils letzten 500-ms-Messfenster.</p></div>
+            <div class="adc-table-wrap">
+              <table class="adc-table">
+                <thead><tr><th>Kanal</th><th>GPIO</th><th>Rohwert</th><th>Min</th><th>Max</th><th>Status</th></tr></thead>
+                <tbody id="adc-raw-values"><tr><td colspan="6">Noch keine Messwerte</td></tr></tbody>
+              </table>
+            </div>
+            </article>
+          </div>
+          <button id="save-settings" class="primary-button" type="button">Einstellungen speichern</button>
+        </section>
+
+        <section id="settings-calibration" class="settings-pane" aria-labelledby="calibration-title">
+          <aside class="calibration-warning" role="alert">
+            <strong>Warnung: Kalibrierung nur durch fachkundige Personen</strong>
+            <p>Nur durchführen, wenn du den Messaufbau sicher beherrschst und ein strombegrenztes Labornetzteil sowie ein geeignetes Referenzmessgerät zur Verfügung hast. Falsche Verdrahtung oder Stromstärken können Sensoren, ESP32, Leitungen und Netzteil beschädigen und zu gefährlicher Erwärmung führen.</p>
+          </aside>
+          <div class="calibration-heading">
+            <div><p class="eyebrow">Messwerte</p><h2 id="calibration-title">Sensoren kalibrieren</h2></div>
+            <div class="calibration-heading-actions">
+              <p>Der angezeigte ADC-Rohwert ist über 500 ms gemittelt. Lege den Referenzwert exakt an, kontrolliere ihn mit dem Referenzmessgerät und speichere dann den Punkt.</p>
+              <a class="secondary-button" href="/calibration.json" download="pedal-kino-calibration.json">Kalibrierdatei herunterladen</a>
+            </div>
+          </div>
+          <div id="calibration-sensors" class="calibration-sensors"></div>
+        </section>
       </section>
     </main>
 

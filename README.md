@@ -29,6 +29,7 @@ Bike 1 ─ Generator ─ Laderegler ─ Strommessung ─┐
 Bike 2 ─ Generator ─ Laderegler ─ Strommessung ─┤
 Bike 3 ─ Generator ─ Laderegler ─ Strommessung ─┼─ 12-V-Bus ─ LiFePO₄-Akku
 Bike 4 ─ Generator ─ Laderegler ─ Strommessung ─┘                │
+                                      bidirektionaler Akkustrom ─┤
                                                                 ├─ ESP32 + Messwerterfassung
                                                                 └─ Wechselrichter ─ 230 V ─ Beamer
 ```
@@ -51,6 +52,10 @@ Der aktuelle Entwurf sieht einen 500-VA-Wechselrichter und einen 12-V-LiFePO₄-
 - Controller ist ein ESP32.
 - Die Firmware wird mit PlatformIO und dem Arduino-Framework gebaut.
 - Der ESP32 eröffnet den WLAN-Access-Point `Pedal-Kino`.
+- Nach Eingabe eines Heim-WLANs versucht der ESP32 dieses beim Start 30 Sekunden
+  lang. Bei Erfolg ist er über seine DHCP-Adresse beziehungsweise
+  `http://pedal-kino.local` erreichbar; andernfalls öffnet er den Access Point
+  `Pedal-Kino` als Fallback.
 - Die Weboberfläche liegt im LittleFS des ESP32 und ist ohne Internet erreichbar.
 - Smartphones und Notebooks verbinden sich direkt mit dem Access Point.
 - Die erforderliche WLAN-Reichweite beträgt ungefähr zehn Meter.
@@ -66,11 +71,17 @@ Der aktuelle Entwurf sieht einen 500-VA-Wechselrichter und einen 12-V-LiFePO₄-
 
 ### Weboberfläche
 
-Die Navigation bietet folgende Ansichten:
+Das große Burger-Menü oben links beginnt mit der Übersicht, zeigt danach die
+vier Bikes und hat die Einstellungen als letzten Eintrag:
 
-- **Einstellungen:** Demo-/Live-Datenquelle und aktive Fahrradplätze
-- **Übersicht:** Akku, Restlaufzeit, Leistungsfluss, Gesamtleistung, Verbrauch und alle aktiven Fahrräder mit kompaktem Nadelinstrument
+- **Übersicht:** Akku-Leistungsfluss von -500 bis +500 W, Gesamtleistung,
+  Verbrauch und alle aktiven Fahrräder mit kompaktem
+  Nadelinstrument
 - **Bike 1–4:** großes Nadelinstrument, aktuelle Leistung, erzeugte Energie, Rang und Verlauf des jeweiligen Fahrrads
+- **Rangliste:** erzeugte Wattstunden aller abgeschlossenen und aktuell fahrenden
+  Fahrer
+- **Einstellungen:** Demo-/Live-Datenquelle, aktive Fahrradplätze, Anzahl der
+  verbundenen Geräte, ADC-Rohwerte und Kalibrierung
 
 Die Oberfläche ist für Smartphones ausgelegt und skaliert bis zu Notebook-Bildschirmen. Sie benötigt keine externen Schriftarten, Bibliotheken oder Internetressourcen.
 
@@ -93,25 +104,179 @@ http://localhost:8000/?demo=1
   "type": "telemetry",
   "timestamp": 123456,
   "system": {
-    "batteryPercent": 74.2,
+    "batteryPercent": null,
     "batteryVoltage": 13.1,
-    "batteryCurrentA": 4.8,
-    "batteryPowerW": 62.9,
-    "loadPowerW": 215.0,
-    "remainingMinutes": 18,
-    "state": "discharging",
-    "connectedClients": 3
+    "batteryCurrentA": 12.3,
+    "batteryPowerW": 161.5,
+    "loadPowerW": null,
+    "remainingMinutes": null,
+    "state": "charging",
+    "connectedClients": 3,
+    "ready": true,
+    "fault": false
   },
   "bikes": [
-    { "id": 1, "enabled": true, "powerW": 118.0, "energyWh": 42.7 },
-    { "id": 2, "enabled": true, "powerW": 96.0, "energyWh": 38.1 },
-    { "id": 3, "enabled": false, "powerW": 0.0, "energyWh": 0.0 },
-    { "id": 4, "enabled": true, "powerW": 132.0, "energyWh": 51.4 }
-  ]
+    { "id": 1, "riderId": 1, "enabled": true, "currentA": 8.99, "voltageV": 13.13, "powerW": 118.0, "energyWh": 42.7, "adcRaw": 1919, "adcRawMin": 1915, "adcRawMax": 1924, "measurementValid": true }
+  ],
+  "leaderboard": [
+    { "riderId": 5, "bikeId": 2, "energyWh": 18.4 }
+  ],
+  "measurements": {
+    "sequence": 810,
+    "sampledAtMs": 40521,
+    "batteryVoltage": { "pin": 33, "valueV": 13.13, "adcRaw": 2868, "adcRawMin": 2864, "adcRawMax": 2872, "valid": true },
+    "batteryCurrent": { "pin": 32, "valueA": 12.3, "adcRaw": 1856, "adcRawMin": 1851, "adcRawMax": 1862, "valid": true, "calibrated": true }
+  },
+  "calibration": {
+    "averagingWindowMs": 100,
+    "currents": [
+      { "channel": 0, "liveRaw": 1919, "points": [
+        { "valueA": 0, "calibrated": true, "raw": 1550 },
+        { "valueA": 1, "calibrated": false, "raw": null }
+      ] }
+    ],
+    "voltage": { "liveRaw": 2868, "points": [
+      { "valueV": 8, "calibrated": true, "raw": 1747 }
+    ] }
+  }
 }
 ```
 
-`system.state` ist `charging`, `discharging` oder `balanced`. Eine unbekannte Restlaufzeit wird als `-1` übertragen.
+Die ADC-Werte sind Mittelwert, Minimum und Maximum aller Abtastungen in einem
+nichtblockierenden 500-ms-Fenster. Die Firmware sendet den jeweils jüngsten Satz
+mindestens einmal pro Sekunde. Eine Änderung von mindestens 10 W löst weiterhin
+sofort einen zusätzlichen Datensatz aus.
+
+Der aktuelle Schaltplan besitzt vier Generator-Stromsensoren und einen
+Spannungsteiler für die Batteriespannung. Der nächste freie, auch bei aktivem
+WLAN nutzbare ADC1-Eingang ist **GPIO32**. Die Firmware reserviert ihn für einen
+bidirektionalen Batteriestromsensor. Positive Stromwerte bedeuten Laden,
+negative Entladen. Erst nach mindestens zwei gespeicherten Kalibrierpunkten
+werden `batteryCurrentA`, `batteryPowerW` und `system.state` ausgegeben; vorher
+bleiben die Leistungswerte `null` und der Zustand `unknown`. Für 500 W an einem
+12-V-System muss Sensor, Leiterbahn und Sicherung mindestens rund 42 A tragen;
+praktisch ist ein bidirektionaler Sensor mit wenigstens ±50 A sinnvoll.
+
+Die Status-LEDs entsprechen dem Schaltplan und sind aktiv LOW: GPIO18 zeigt
+`READY`, GPIO19 `FAULT`. Ein Fehler wird bei fehlgeschlagenem LittleFS-/AP-Start
+oder bei einem ADC-Kanal am Anschlag gesetzt. `system.ready` und `system.fault`
+transportieren denselben Zustand per WebSocket.
+
+## ADC-Kalibrierung am aufgebauten Gerät
+
+Unter **Einstellungen → Kalibrieren** lassen sich die Kennlinien direkt am
+aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren ist die gemeinsam
+vermessene Steigung von 43,5 ADC-Digits/A fest in der Firmware hinterlegt. Die
+Oberfläche ermittelt deshalb nur noch die vier individuellen Nullpunkte
+gleichzeitig über 30 Sekunden. Für den bidirektionalen Batteriestromsensor sind
+-4, 0 und +4 A und für den Spannungssensor 8 und 14 V vorgesehen.
+Der Bereich und alle schreibenden Kalibrierbefehle sind mit dem vorläufigen
+Passwort `pedalkino` geschützt. Die Seite zeigt den
+aktuellen 500-ms-Mittelwert sowie Status und gespeicherte Rohwerte.
+
+Die gespeicherten Nullpunkte und Messpunkte liegen dauerhaft in den ESP32
+Preferences. Zwischen
+vorhandenen Punkten wird linear interpoliert, außerhalb der äußeren Punkte
+linear extrapoliert. Fehlen Punkte, werden nur die vorhandenen verwendet; bei
+null oder einem Punkt ergänzt die theoretische Schaltungssteigung die
+Umrechnung. Dadurch bleibt die Messung auch während einer schrittweisen
+Kalibrierung verfügbar.
+
+Über **Kalibrierdatei herunterladen** oder direkt über
+`http://<esp-ip>/calibration.json` lässt sich die aktuelle Kalibrierung als
+JSON-Datei sichern. Der HTTP-Endpunkt liefert ausschließlich gespeicherte
+Kalibrierpunkte und setzt einen Download-Dateinamen.
+
+### Messmittel
+
+- kalibriertes Multimeter für die tatsächlich anliegende Spannung,
+- Labornetzteil mit Strombegrenzung,
+- für die Stromkurven eine elektronische Last oder ausreichend dimensionierte
+  Leistungswiderstände sowie idealerweise ein Referenz-Shunt/Strommessgerät,
+- kurze, ausreichend dimensionierte Leitungen und die vorgesehenen Sicherungen.
+
+Die Strombegrenzungsanzeige eines Labornetzteils ist kein ausreichend genauer
+Strom-Sollwert. Der Strom wird durch die Last eingestellt und mit dem
+Referenzmessgerät erfasst.
+
+### Spannungsmessung GPIO33
+
+1. Akku und alle Generatoren abklemmen. Den ESP32 zunächst über USB versorgen.
+2. Labornetzteil mit 0 V an J1 `BAT+`/GND anschließen; Polarität vor dem
+   Einschalten prüfen. Der Messpunkt `BAT_F` liegt hinter F1 und vor D1.
+3. Nacheinander 8 und 14 V einstellen und die tatsächliche Spannung mit
+   dem Multimeter direkt an J1 prüfen.
+4. Jeden Wert stabilisieren lassen und unter **Einstellungen → Kalibrieren →
+   Batteriespannung** den passenden Punkt messen. Jede Punktmessung läuft
+   30 Sekunden und speichert danach den Mittelwert der 500-ms-Messfenster.
+   Nicht benötigte oder noch nicht vermessene Punkte können unkalibriert
+   bleiben.
+
+### Strommessung GPIO36/39/34/35
+
+Die Hall-Strombahnen der ACS712 sind galvanisch von ihren ADC-Ausgängen
+getrennt. Die Steigung ist fest auf 43,5 ADC-Digits/A eingestellt; die
+kanalabhängigen Nullpunkte werden gemeinsam bestimmt.
+
+1. Platine und alle ACS712 mit 5 V versorgen, durch ihre Strompfade aber keinen
+   Strom schicken.
+2. Unter **Einstellungen → Kalibrieren** die gemeinsame Nullpunktmessung
+   starten. Die Firmware sammelt 30 Sekunden lang gleichzeitig die
+   500-ms-Mittelwerte aller vier Kanäle und speichert deren Mittelwerte.
+3. Während der Messung keine Generatoren bewegen und sicherstellen, dass durch
+   wirklich alle vier Sensoren 0 A fließen.
+4. Den Nullpunkt nach 15–20 Minuten Erwärmung bei Bedarf wiederholen.
+   Der ACS712 ist temperatur- und 5-V-versorgungsabhängig. Ist die Drift größer
+   als die gewünschte Genauigkeit, sollte vor jeder Veranstaltung ein
+   Nullabgleich erfolgen oder ein präziserer Sensor gewählt werden.
+
+### Bidirektionale Batteriestrommessung GPIO32
+
+GPIO32 ist in der Firmware als nächster freier ADC1-Kanal vorgesehen. Der noch
+auszuwählende Sensor muss in beiden Richtungen messen und samt Strompfad für
+mindestens 500 W beziehungsweise etwa 42 A bei 12 V ausgelegt sein. Vor dem
+Anschluss muss sein Analogausgang auf den ESP32-Bereich von 0 bis 3,3 V begrenzt
+werden. Zuerst den Nullpunkt ohne Batteriestrom speichern, danach mindestens je
+einen genau gemessenen Lade- und Entladestrom. Die vorzeichenrichtige Montage
+ist erreicht, wenn Ladestrom positiv und Entladestrom negativ angezeigt wird.
+
+Anfangs fahren Fahrer 1 bis 4 auf Bike 1 bis 4. **Nächster Fahrer** übernimmt
+das Ergebnis des bisherigen Fahrers in die Rangliste, vergibt die nächste freie
+Fahrernummer und beginnt auf diesem Bike wieder bei 0 Wh. Der WebSocket-Befehl
+dazu lautet beispielsweise `{ "type": "nextRider", "bike": 1 }`. Die
+Fahrersitzung und Rangliste bleiben bis zum nächsten Neustart im RAM des ESP32;
+die letzten 32 abgeschlossenen Fahrer werden geführt.
+
+Zum Beobachten genügt beispielsweise:
+
+```bash
+wscat -c ws://192.168.4.1/ws
+```
+
+Komfortabler ist der mitgelieferte Python-Monitor. Er benötigt keine externen
+Python-Pakete:
+
+```bash
+python3 tools/pedal_status.py
+```
+
+Die Adresse kann für ein anderes Netz überschrieben werden. Für eine
+Kalibrierreihe schreibt `--csv` jeden empfangenen Datensatz fortlaufend weg:
+
+```bash
+python3 tools/pedal_status.py --url ws://192.168.4.1/ws \
+  --csv messungen/kalibrierung.csv
+```
+
+Weitere nützliche Betriebsarten sind `--once` für genau einen Datensatz,
+`--json` für unveränderte JSON-Zeilen und `--no-clear` für eine fortlaufende
+Terminalausgabe. Abbruch erfolgt mit `Ctrl+C`; nach einem Verbindungsabbruch
+verbindet sich das Programm automatisch erneut.
+
+Für jede Kalibrierreihe sollten Kanal, Referenzwert, Rohwert-Mittel, Rohwert-
+Minimum/-Maximum, 5-V-Versorgung und Sensortemperatur als CSV festgehalten
+werden. Anschließend werden unabhängige Zwischenpunkte geprüft; sie dürfen nicht
+dieselben Punkte sein, aus denen die Kurve erzeugt wurde.
 
 ### Konfiguration an den ESP32
 
@@ -159,11 +324,33 @@ Weboberfläche in das LittleFS übertragen:
 pio run --target uploadfs
 ```
 
+Vor `buildfs` und `uploadfs` versucht PlatformIO automatisch, die aktuelle
+Kalibrierdatei vom ESP32 herunterzuladen und als `data/calibration.json` in das
+LittleFS-Abbild aufzunehmen. Für `esp32dev` wird standardmäßig
+`http://192.168.4.1/calibration.json`, für `esp32dev_ota`
+`http://192.168.10.31/calibration.json` verwendet. Ist der ESP32 nicht
+erreichbar oder liefert er kein gültiges Kalibrierformat, erscheint lediglich
+eine Meldung; der Build läuft weiter und eine bereits vorhandene Sicherung wird
+nicht überschrieben. Die Adresse lässt sich in `platformio.ini` über
+`custom_calibration_url` ändern.
+
 Serielle Ausgabe öffnen:
 
 ```bash
 pio device monitor
 ```
+
+Nach dem einmaligen USB-Upload der OTA-fähigen Firmware kann ein Update im
+Heimnetz über `192.168.10.31` erfolgen:
+
+```bash
+pio run -e esp32dev_ota --target upload
+pio run -e esp32dev_ota --target uploadfs
+```
+
+Der OTA-Hostname ist `pedal-kino`, Port 3232. Das derzeitige
+Entwicklungskennwort entspricht dem Access-Point-Kennwort und muss vor einem
+öffentlichen Einsatz geändert werden.
 
 Nach dem Start verbindet man sich mit dem WLAN `Pedal-Kino` und öffnet `http://192.168.4.1`. Das voreingestellte Passwort steht derzeit als Entwicklungsvorgabe in `src/main.cpp` und muss vor einem öffentlichen Einsatz geändert werden.
 
@@ -185,13 +372,17 @@ Bereits vorhanden:
 - dauerhafte Aktivierung beziehungsweise Deaktivierung der vier Fahrradkanäle,
 - responsive Live-Oberfläche,
 - JavaScript-Demomodus.
+- Hardware-Abstraktion für vier ACS712-Kanäle, Batteriespannung und den
+  bidirektionalen Batteriestromkanal auf GPIO32,
+- ADC-Rohdiagnose und kalibrierte Messwerte im WebSocket-Datenstrom.
+- Lade-/Entladeinstrument mit ±500 W sowie Fahrerwechsel und Wh-Rangliste.
 
 Noch umzusetzen:
 
-- Treiber und Kalibrierung der eingesetzten Strom- und Spannungssensoren,
+- Aufnahme und Eintragung der gerätespezifischen ADC-Kalibrierpunkte,
 - Ermittlung des Akku-Ladezustands und einer belastbaren Restlaufzeit,
 - Einbindung verfügbarer Daten des Victron-Wechselrichters,
-- Zurücksetzen und Zuordnen der Energiezähler bei Teilnehmerwechseln,
+- dauerhafte Zuordnung der Energiezähler zu Teilnehmern,
 - Festlegung, ob Ranglisten nur für eine Sitzung oder dauerhaft gespeichert werden,
 - Verhalten bei leerem Akku, Überlast, Sensorfehler und Kommunikationsausfall.
 

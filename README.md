@@ -72,7 +72,7 @@ Der aktuelle Entwurf sieht einen 500-VA-Wechselrichter und einen 12-V-LiFePO₄-
 ### Weboberfläche
 
 Das große Burger-Menü oben links beginnt mit der Übersicht, zeigt danach die
-vier Bikes und hat die Einstellungen als letzten Eintrag:
+vier Bikes und die Rangliste:
 
 - **Übersicht:** Akku-Leistungsfluss von -500 bis +500 W, Gesamtleistung,
   Verbrauch und alle aktiven Fahrräder mit kompaktem
@@ -80,8 +80,11 @@ vier Bikes und hat die Einstellungen als letzten Eintrag:
 - **Bike 1–4:** großes Nadelinstrument, aktuelle Leistung, erzeugte Energie, Rang und Verlauf des jeweiligen Fahrrads
 - **Rangliste:** erzeugte Wattstunden aller abgeschlossenen und aktuell fahrenden
   Fahrer
-- **Einstellungen:** Demo-/Live-Datenquelle, aktive Fahrradplätze, Anzahl der
-  verbundenen Geräte, ADC-Rohwerte und Kalibrierung
+
+Einstellungen, Netzwerkverwaltung, ADC-Rohwerte und Kalibrierung sind von der
+Publikumsansicht getrennt und unter `http://<esp-ip>/config` erreichbar. Dort
+kann auch das gespeicherte Heim-WLAN gelöscht werden; der ESP32 startet danach
+neu und öffnet wieder seinen Access Point.
 
 Die Oberfläche ist für Smartphones ausgelegt und skaliert bis zu Notebook-Bildschirmen. Sie benötigt keine externen Schriftarten, Bibliotheken oder Internetressourcen.
 
@@ -89,7 +92,7 @@ Die Oberfläche ist für Smartphones ausgelegt und skaliert bis zu Notebook-Bild
 
 Der Demomodus erzeugt plausible Zufallsdaten direkt in JavaScript. Es wird keine WebSocket-Verbindung aufgebaut. Dadurch kann die Oberfläche ohne ESP32 entwickelt, präsentiert und auf verschiedenen Bildschirmgrößen getestet werden.
 
-Der Modus lässt sich unter **Einstellungen** aktivieren. Beim direkten Öffnen von `data/index.html` wird er automatisch verwendet. Wird die Seite über einen Webserver ausgeliefert, kann er zusätzlich mit `?demo=1` gestartet werden, beispielsweise:
+Der Modus lässt sich unter `/config` aktivieren. Beim direkten Öffnen von `data/index.html` wird er automatisch verwendet. Wird die Seite über einen Webserver ausgeliefert, kann er zusätzlich mit `?demo=1` gestartet werden, beispielsweise:
 
 ```text
 http://localhost:8000/?demo=1
@@ -164,7 +167,7 @@ transportieren denselben Zustand per WebSocket.
 
 ## ADC-Kalibrierung am aufgebauten Gerät
 
-Unter **Einstellungen → Kalibrieren** lassen sich die Kennlinien direkt am
+Unter **`/config` → Kalibrieren** lassen sich die Kennlinien direkt am
 aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren ist die gemeinsam
 vermessene Steigung von 43,5 ADC-Digits/A fest in der Firmware hinterlegt. Die
 Oberfläche ermittelt deshalb nur noch die vier individuellen Nullpunkte
@@ -206,7 +209,7 @@ Referenzmessgerät erfasst.
    Einschalten prüfen. Der Messpunkt `BAT_F` liegt hinter F1 und vor D1.
 3. Nacheinander 8 und 14 V einstellen und die tatsächliche Spannung mit
    dem Multimeter direkt an J1 prüfen.
-4. Jeden Wert stabilisieren lassen und unter **Einstellungen → Kalibrieren →
+4. Jeden Wert stabilisieren lassen und unter **`/config` → Kalibrieren →
    Batteriespannung** den passenden Punkt messen. Jede Punktmessung läuft
    30 Sekunden und speichert danach den Mittelwert der 500-ms-Messfenster.
    Nicht benötigte oder noch nicht vermessene Punkte können unkalibriert
@@ -220,7 +223,7 @@ kanalabhängigen Nullpunkte werden gemeinsam bestimmt.
 
 1. Platine und alle ACS712 mit 5 V versorgen, durch ihre Strompfade aber keinen
    Strom schicken.
-2. Unter **Einstellungen → Kalibrieren** die gemeinsame Nullpunktmessung
+2. Unter **`/config` → Kalibrieren** die gemeinsame Nullpunktmessung
    starten. Die Firmware sammelt 30 Sekunden lang gleichzeitig die
    500-ms-Mittelwerte aller vier Kanäle und speichert deren Mittelwerte.
 3. Während der Messung keine Generatoren bewegen und sicherstellen, dass durch
@@ -295,8 +298,10 @@ Die vier Positionen entsprechen Bike 1 bis Bike 4. Die Firmware speichert die Au
 .
 ├── data/              Weboberfläche für LittleFS
 │   ├── index.html
+│   ├── config.html
 │   ├── app.css
 │   └── app.js
+├── qr_codes/          WLAN-, Live- und Admin-QR-Codes (PNG/SVG)
 ├── src/
 │   └── main.cpp       ESP32-Firmware
 ├── slack/             Gespeicherter Slack-Verlauf und Entwurfsbilder
@@ -352,7 +357,14 @@ Der OTA-Hostname ist `pedal-kino`, Port 3232. Das derzeitige
 Entwicklungskennwort entspricht dem Access-Point-Kennwort und muss vor einem
 öffentlichen Einsatz geändert werden.
 
-Nach dem Start verbindet man sich mit dem WLAN `Pedal-Kino` und öffnet `http://192.168.4.1`. Das voreingestellte Passwort steht derzeit als Entwicklungsvorgabe in `src/main.cpp` und muss vor einem öffentlichen Einsatz geändert werden.
+Nach dem Start verbindet man sich mit dem WLAN `Pedal-Kino`. Ein DNS-Captive-
+Portal beantwortet alle Hostnamen mit der AP-Adresse und leitet die üblichen
+Portal-Prüfungen von Android, iOS/macOS, Windows und Firefox auf die normale
+Live-Anzeige um. Falls sich das Portal nicht automatisch öffnet, lautet die
+Adresse `http://192.168.4.1`; die Administration liegt unter
+`http://192.168.4.1/config`. Passende WLAN-, Live- und Admin-QR-Codes liegen in
+`qr_codes/`. Das voreingestellte Passwort steht derzeit als Entwicklungsvorgabe
+in `src/main.cpp` und muss vor einem öffentlichen Einsatz geändert werden.
 
 Für einen lokalen UI-Test kann im Projektverzeichnis beispielsweise ein einfacher statischer Webserver gestartet werden:
 

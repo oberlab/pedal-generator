@@ -2,6 +2,7 @@
 #include <ArduinoOTA.h>
 #include <ArduinoJson.h>
 #include <AsyncTCP.h>
+#include <DNSServer.h>
 #include <ESPAsyncWebServer.h>
 #include <LittleFS.h>
 #include <ESPmDNS.h>
@@ -58,6 +59,7 @@ struct SystemState {
 
 AsyncWebServer server(80);
 AsyncWebSocket webSocket("/ws");
+DNSServer dnsServer;
 Preferences preferences;
 measurement::Hardware measurementHardware;
 BikeState bikes[BIKE_COUNT];
@@ -73,6 +75,7 @@ bool measurementFault = true;
 bool otaInProgress = false;
 bool otaFault = false;
 bool accessPointMode = true;
+bool captiveDnsActive = false;
 uint32_t restartAtMs = 0;
 bool currentZeroCalibrationActive = false;
 uint32_t currentZeroCalibrationStartedAt = 0;
@@ -597,6 +600,13 @@ void applyConfiguration(const JsonDocument &document) {
   }
 
   const JsonObjectConst wifi = document["wifi"];
+  if (document["forgetWifi"] | false) {
+    preferences.remove("wifiSsid");
+    preferences.remove("wifiPass");
+    restartAtMs = millis() + RESTART_DELAY_MS;
+    significantChangePending = true;
+    return;
+  }
   const char *ssid = wifi["ssid"] | "";
   const char *password = wifi["password"] | "";
   if (ssid[0] != '\0') {
@@ -696,8 +706,10 @@ bool configureAccessPoint() {
   const bool started = WiFi.softAP(AP_SSID, AP_PASSWORD);
   accessPointMode = true;
   networkSsid = AP_SSID;
+  captiveDnsActive = started && dnsServer.start(53, "*", WiFi.softAPIP());
   Serial.printf("Access Point: %s\n", AP_SSID);
   Serial.printf("Web UI: http://%s\n", WiFi.softAPIP().toString().c_str());
+  Serial.printf("Captive portal DNS: %s\n", captiveDnsActive ? "ready" : "failed");
   return started;
 }
 
@@ -748,9 +760,31 @@ void configureWebServer() {
               response->addHeader("Cache-Control", "no-store");
               request->send(response);
             });
+  server.on("/config", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(LittleFS, "/config.html", "text/html");
+  });
+  server.on("/config/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->redirect("/config");
+  });
+
+  // Endpoints used by Android, Apple, Windows and Firefox to detect captive
+  // portals. A redirect to the public live view opens the portal assistant.
+  const char *captivePortalPaths[] = {
+      "/generate_204", "/gen_204", "/hotspot-detect.html",
+      "/library/test/success.html", "/connecttest.txt", "/ncsi.txt",
+      "/redirect", "/canonical.html", "/success.txt"};
+  for (const char *path : captivePortalPaths) {
+    server.on(path, HTTP_ANY, [](AsyncWebServerRequest *request) {
+      request->redirect("/");
+    });
+  }
   server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
   server.onNotFound([](AsyncWebServerRequest *request) {
-    request->send(404, "application/json", "{\"error\":\"not_found\"}");
+    if (accessPointMode) {
+      request->redirect("/");
+    } else {
+      request->send(404, "application/json", "{\"error\":\"not_found\"}");
+    }
   });
   server.begin();
 }
@@ -814,6 +848,7 @@ void loop() {
     ESP.restart();
   }
   ArduinoOTA.handle();
+  if (captiveDnsActive) dnsServer.processNextRequest();
   updateEnergyCounters();
 
   updateMeasurements();

@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "user_manual" / "screenshots"
 BASE_URL = (ROOT / "data" / "index.html").as_uri() + "?demo=1"
+CONFIG_URL = (ROOT / "data" / "config.html").as_uri() + "?demo=1"
 PORT = 4455
 
 
@@ -58,17 +59,17 @@ def main() -> None:
         prefix = f"/session/{session_id}"
 
         captures = [
-                ("overview.png", "overview", 1440, 1100, None),
-                ("bike.png", "bike-1", 1440, 1100, None),
-                ("ranking.png", "ranking", 1440, 1000, None),
-                ("settings.png", "settings", 1440, 1550, None),
-                ("calibration.png", "settings", 1440, 1800, "calibration"),
+                ("overview.png", f"{BASE_URL}#overview", 1440, 1100, None),
+                ("bike.png", f"{BASE_URL}#bike-1", 1440, 1100, None),
+                ("ranking.png", f"{BASE_URL}#ranking", 1440, 1000, None),
+                ("settings.png", CONFIG_URL, 1440, 1550, None),
+                ("calibration.png", CONFIG_URL, 1440, 1800, "calibration"),
         ]
-        for filename, fragment, width, height, special in captures:
+        for filename, url, width, height, special in captures:
             request("POST", prefix + "/window/rect", {
                 "width": width, "height": height, "x": 0, "y": 0,
             })
-            request("POST", prefix + "/url", {"url": f"{BASE_URL}#{fragment}"})
+            request("POST", prefix + "/url", {"url": url})
             time.sleep(1.5)
             if special == "calibration":
                 request("POST", prefix + "/execute/sync", {

@@ -5,6 +5,7 @@
   const HISTORY_LENGTH = 60;
   const DEMO_INTERVAL_MS = 900;
   const MAX_POWER_W = 200;
+  const isConfigPage = document.body.dataset.page === "config";
 
   const state = {
     demoMode: new URLSearchParams(window.location.search).get("demo") === "1" || window.location.protocol === "file:",
@@ -232,7 +233,7 @@
     elements.flowBadge.textContent = flowCopy(state.system.state);
     elements.generatedPower.textContent = number(generatedPowerW);
     elements.loadPower.textContent = numberOrDash(state.system.loadPowerW);
-    elements.clientCount.textContent = number(state.system.connectedClients);
+    if (elements.clientCount) elements.clientCount.textContent = number(state.system.connectedClients);
     elements.bikeGrid.innerHTML = state.bikes.map((bike) => `
       <article class="bike-card panel ${bike.enabled ? "" : "disabled"}" data-bike="${bike.id}" tabindex="${bike.enabled ? "0" : "-1"}" aria-label="Bike ${bike.id}, ${bike.enabled ? `${number(bike.powerW)} Watt` : "deaktiviert"}">
         <div class="bike-card-head"><div class="bike-identity"><span class="bike-number">${bike.id}</span><div class="bike-rider"><span class="rider-name">${escapeText(riderLabel(bike))}</span><small class="${bike.riderName ? "" : "placeholder"}">${bike.riderName ? `Fahrer ${bike.riderId}` : "Ohne Namen"}</small><button type="button" class="rider-name-edit" data-rider-name="${bike.riderId}">Name ändern</button></div></div><span class="bike-state">${bike.enabled ? "Aktiv" : "Pausiert"}</span></div>
@@ -492,13 +493,18 @@
   }
 
   function render() {
-    updateOverview();
-    updateBikeDetail();
-    updateRanking();
-    updateNavigation();
-    updateNetworkInfo();
-    updateAdcRawValues();
-    updateCalibration();
+    if (isConfigPage) {
+      updateSettings();
+      updateNetworkInfo();
+      updateAdcRawValues();
+      updateCalibration();
+      if (elements.clientCount) elements.clientCount.textContent = number(state.system.connectedClients);
+    } else {
+      updateOverview();
+      updateBikeDetail();
+      updateRanking();
+      updateNavigation();
+    }
   }
 
   function navigate(view) {
@@ -510,7 +516,7 @@
         return;
       }
       activeView = view;
-    } else if (view === "settings" || view === "overview" || view === "ranking") {
+    } else if (view === "overview" || view === "ranking") {
       activeView = view;
     } else {
       activeView = "overview";
@@ -518,7 +524,6 @@
 
     document.querySelectorAll(".view").forEach((section) => section.classList.remove("active"));
     document.querySelector(activeView.startsWith("bike-") ? "#view-bike" : `#view-${activeView}`).classList.add("active");
-    if (activeView === "settings") updateSettings();
     updateNavigation();
     window.history.replaceState(null, "", `#${activeView}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -683,6 +688,16 @@
       wifiSsid ? "WLAN gespeichert – ESP32 startet neu" : "Konfiguration an ESP32 gesendet");
   }
 
+  function forgetWifi() {
+    if (state.demoMode || socket?.readyState !== WebSocket.OPEN) {
+      showToast("WLAN kann nur mit Live-Verbindung vergessen werden");
+      return;
+    }
+    if (!window.confirm("Gespeichertes Heim-WLAN wirklich vergessen? Der ESP32 startet danach als Access Point neu.")) return;
+    socket.send(JSON.stringify({ type: "config", forgetWifi: true }));
+    showToast("Heim-WLAN gelöscht – ESP32 startet neu");
+  }
+
   function selectSettingsPane(pane) {
     if (pane === "calibration" && !calibrationPassword) {
       const enteredPassword = window.prompt("Passwort für die Kalibrierung:");
@@ -738,21 +753,24 @@
       setMenuOpen(false);
     });
   });
-  elements.menuToggle.addEventListener("click", () => {
-    setMenuOpen(!elements.navigation.classList.contains("open"));
-  });
-  document.addEventListener("click", (event) => {
-    if (!elements.navigation.contains(event.target) && !elements.menuToggle.contains(event.target)) setMenuOpen(false);
-  });
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") setMenuOpen(false);
-  });
-  document.querySelector("#save-settings").addEventListener("click", saveSettings);
-  document.querySelector("#reset-ranking").addEventListener("click", resetRanking);
+  if (elements.menuToggle && elements.navigation) {
+    elements.menuToggle.addEventListener("click", () => {
+      setMenuOpen(!elements.navigation.classList.contains("open"));
+    });
+    document.addEventListener("click", (event) => {
+      if (!elements.navigation.contains(event.target) && !elements.menuToggle.contains(event.target)) setMenuOpen(false);
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") setMenuOpen(false);
+    });
+  }
+  document.querySelector("#save-settings")?.addEventListener("click", saveSettings);
+  document.querySelector("#forget-wifi")?.addEventListener("click", forgetWifi);
+  document.querySelector("#reset-ranking")?.addEventListener("click", resetRanking);
   document.querySelectorAll("[data-settings-pane]").forEach((button) => {
     button.addEventListener("click", () => selectSettingsPane(button.dataset.settingsPane));
   });
-  elements.calibrationSensors.addEventListener("click", (event) => {
+  elements.calibrationSensors?.addEventListener("click", (event) => {
     const zeroButton = event.target.closest("[data-current-zero-calibration]");
     const saveButton = event.target.closest(".calibration-save");
     const clearButton = event.target.closest(".calibration-clear");
@@ -760,9 +778,11 @@
     else if (saveButton) changeCalibration(saveButton, true);
     else if (clearButton) changeCalibration(clearButton, false);
   });
-  window.addEventListener("hashchange", () => navigate(window.location.hash.slice(1)));
-
-  updateSettings();
-  navigate(window.location.hash.slice(1) || "overview");
+  if (!isConfigPage) {
+    window.addEventListener("hashchange", () => navigate(window.location.hash.slice(1)));
+    navigate(window.location.hash.slice(1) || "overview");
+  } else {
+    render();
+  }
   if (state.demoMode) startDemo(); else connectWebSocket();
 })();

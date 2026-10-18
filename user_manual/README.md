@@ -30,9 +30,14 @@ eigenen Access Point:
 | WLAN-Passwort | `pedalkino` |
 | Weboberfläche | `http://192.168.4.1` |
 
+Nach dem Verbinden öffnet das Captive Portal normalerweise automatisch die
+Live-Anzeige. Alternativ kann der WLAN- oder Live-QR-Code aus `qr_codes/`
+gescannt werden.
+
 Die Oberfläche passt sich an Computer, Tablet und Smartphone an. Über das
-Burger-Menü oben links werden Übersicht, einzelne Bikes, Rangliste und
-Einstellungen geöffnet.
+Burger-Menü oben links werden Übersicht, einzelne Bikes und Rangliste geöffnet.
+Die Administration ist getrennt unter `http://<esp-ip>/config` erreichbar; für
+den Access Point lautet die Adresse `http://192.168.4.1/config`.
 
 ## 2. Übersicht
 
@@ -121,6 +126,9 @@ und lässt sich nicht rückgängig machen.
 
 ![Allgemeine Einstellungen und ADC-Diagnose](screenshots/settings.png)
 
+Die Einstellungen werden direkt über `/config` oder mit dem Admin-QR-Code
+geöffnet. Sie sind nicht Teil des Menüs der öffentlichen Live-Anzeige.
+
 ### Aktive Fahrradplätze
 
 Nicht verwendete Bikes können deaktiviert werden. Ein deaktivierter Platz liefert
@@ -131,6 +139,10 @@ keine Leistung für die Auswertung.
 Hier werden SSID und Passwort des Heim-WLANs eingetragen. Nach dem Speichern
 startet der ESP32 neu. Kann er das WLAN innerhalb der vorgesehenen Zeit nicht
 erreichen, öffnet er wieder den Access Point `Pedal-Kino`.
+
+Mit **Gespeichertes Heim-WLAN vergessen** werden SSID und Passwort nach einer
+Bestätigung dauerhaft gelöscht. Anschließend startet der ESP32 neu und bleibt im
+Access-Point-Modus.
 
 ### Verbindung
 

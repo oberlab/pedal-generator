@@ -199,6 +199,8 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
 .settings-subnav button.active { color: #092017; background: var(--green); }
 .settings-pane { display: none; }
 .settings-pane.active { display: block; }
+.config-heading { align-items: center; }
+.config-back { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: rgba(255,255,255,.04); font-size: 24px; font-weight: 800; text-decoration: none; }
 .settings-card { padding: 24px; display: flex; align-items: center; justify-content: space-between; gap: 30px; }
 .settings-card.vertical { display: block; }
 .setting-copy h2 { margin: 0 0 6px; font-size: 19px; }
@@ -219,6 +221,7 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
 .wifi-fields label { display: grid; gap: 7px; color: var(--muted); font-size: 13px; font-weight: 700; }
 .wifi-fields input { width: 100%; box-sizing: border-box; padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: rgba(4,12,10,.45); outline: none; }
 .wifi-fields input:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(84,227,154,.1); }
+.danger-button { margin-top: 16px; padding: 10px 13px; border: 1px solid rgba(255,100,124,.38); border-radius: 10px; color: var(--red); background: rgba(255,100,124,.08); font-weight: 800; cursor: pointer; }
 .adc-table-wrap { margin-top: 18px; overflow-x: auto; }
 .adc-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .adc-table th, .adc-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }

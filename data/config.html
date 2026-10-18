@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101a17">
+    <title>Konfiguration · Pedal-Kino</title>
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body data-page="config">
+    <header class="app-header">
+      <div class="header-start">
+        <a class="config-back" href="/" aria-label="Zurück zur Pedal-Kino-Anzeige">←</a>
+        <a class="brand" href="/" aria-label="Pedal-Kino Übersicht">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span><strong>Pedal-Kino</strong><small>Administration</small></span>
+        </a>
+      </div>
+      <div id="connection-status" class="connection-status" data-state="connecting">
+        <span class="status-dot"></span><span class="status-label">Verbinde …</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="view active" aria-labelledby="settings-title">
+        <div class="section-heading config-heading">
+          <div><p class="eyebrow">Administration</p><h1 id="settings-title">Einstellungen</h1></div>
+          <a class="secondary-button" href="/">Zur Live-Anzeige</a>
+        </div>
+
+        <nav class="settings-subnav" aria-label="Einstellungsbereich">
+          <button type="button" class="active" data-settings-pane="general">Allgemein</button>
+          <button type="button" data-settings-pane="calibration">Kalibrieren 🔒</button>
+        </nav>
+
+        <section id="settings-general" class="settings-pane active">
+          <div class="settings-layout">
+            <article class="panel settings-card">
+              <div class="setting-copy"><h2>Datenquelle</h2><p>Im Demomodus entstehen realistische Testwerte direkt im Browser.</p></div>
+              <label class="switch"><input id="demo-mode" type="checkbox"><span></span><b>Demo</b></label>
+            </article>
+
+            <article class="panel settings-card vertical">
+              <div class="setting-copy"><h2>Aktive Fahrradplätze</h2><p>Alle vier Kanäle sind vorhanden. Deaktivierte Plätze erscheinen nicht in der Live-Auswertung.</p></div>
+              <div id="bike-settings" class="bike-settings"></div>
+            </article>
+
+            <article class="panel settings-card vertical">
+              <div class="setting-copy"><h2>Heim-WLAN</h2><p>Neue Zugangsdaten werden dauerhaft im ESP32 gespeichert. Nach dem Speichern startet er neu. Ist dieses WLAN nicht erreichbar, öffnet er wieder den Access Point „Pedal-Kino“.</p></div>
+              <div class="wifi-fields">
+                <label><span>WLAN-Name (SSID)</span><input id="wifi-ssid" type="text" maxlength="32" autocomplete="off" placeholder="z. B. MeinWLAN"></label>
+                <label><span>Passwort</span><input id="wifi-password" type="password" maxlength="63" autocomplete="new-password" placeholder="WLAN-Passwort"></label>
+              </div>
+              <button id="forget-wifi" class="danger-button" type="button">Gespeichertes Heim-WLAN vergessen</button>
+            </article>
+
+            <article class="panel settings-card info-card">
+              <div class="setting-copy"><h2>Verbindung</h2><p>Aktueller Netzwerkstatus des ESP32.</p></div>
+              <dl><div><dt>Modus</dt><dd id="network-mode">–</dd></div><div><dt>WLAN</dt><dd id="network-ssid">–</dd></div><div><dt>Adresse</dt><dd id="network-address">–</dd></div><div><dt>Verbundene Geräte</dt><dd id="client-count">0</dd></div><div><dt>WebSocket</dt><dd>/ws</dd></div></dl>
+            </article>
+
+            <article class="panel settings-card vertical">
+              <div class="setting-copy"><h2>ADC-Rohwerte</h2><p>Live-Mittelwert sowie Minimum und Maximum aus dem jeweils letzten 500-ms-Messfenster.</p></div>
+              <div class="adc-table-wrap">
+                <table class="adc-table">
+                  <thead><tr><th>Kanal</th><th>GPIO</th><th>Rohwert</th><th>Min</th><th>Max</th><th>Status</th></tr></thead>
+                  <tbody id="adc-raw-values"><tr><td colspan="6">Noch keine Messwerte</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+          <button id="save-settings" class="primary-button" type="button">Einstellungen speichern</button>
+        </section>
+
+        <section id="settings-calibration" class="settings-pane" aria-labelledby="calibration-title">
+          <aside class="calibration-warning" role="alert">
+            <strong>Warnung: Kalibrierung nur durch fachkundige Personen</strong>
+            <p>Nur durchführen, wenn du den Messaufbau sicher beherrschst und ein strombegrenztes Labornetzteil sowie ein geeignetes Referenzmessgerät zur Verfügung hast. Falsche Verdrahtung oder Stromstärken können Sensoren, ESP32, Leitungen und Netzteil beschädigen und zu gefährlicher Erwärmung führen.</p>
+          </aside>
+          <div class="calibration-heading">
+            <div><p class="eyebrow">Messwerte</p><h2 id="calibration-title">Sensoren kalibrieren</h2></div>
+            <div class="calibration-heading-actions">
+              <p>Der angezeigte ADC-Rohwert ist über 500 ms gemittelt. Lege den Referenzwert exakt an, kontrolliere ihn mit dem Referenzmessgerät und speichere dann den Punkt.</p>
+              <a class="secondary-button" href="/calibration.json" download="pedal-kino-calibration.json">Kalibrierdatei herunterladen</a>
+            </div>
+          </div>
+          <div id="calibration-sensors" class="calibration-sensors"></div>
+        </section>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

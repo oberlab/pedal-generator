@@ -1,0 +1,22 @@
+{
+  "format": "pedal-kino-config",
+  "version": 1,
+  "currentSensors": {
+    "dividerUpperOhm": 30000,
+    "dividerLowerOhm": 100000,
+    "rawPerAmp": 0,
+    "zeroRaw": 2170
+  },
+  "batteryVoltage": {
+    "rawPerVolt": 218.33
+  },
+  "batteryCurrent": {
+    "rawPerAmp": 24.82,
+    "zeroRaw": 1551
+  },
+  "thresholds": {
+    "currentNoiseFloorA": 0.10,
+    "bikePowerNoiseFloorW": 5.0,
+    "significantPowerChangeW": 10.0
+  }
+}

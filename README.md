@@ -168,8 +168,9 @@ transportieren denselben Zustand per WebSocket.
 ## ADC-Kalibrierung am aufgebauten Gerät
 
 Unter **`/config` → Kalibrieren** lassen sich die Kennlinien direkt am
-aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren ist die gemeinsam
-vermessene Steigung von 43,5 ADC-Digits/A fest in der Firmware hinterlegt. Die
+aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren gilt eine
+gemeinsame Steigung in ADC-Digits/A, die sich aus dem Spannungsteiler ergibt
+(Standard 30 kΩ/100 kΩ: 66,9 Digits/A, siehe `config.json`). Die
 Oberfläche ermittelt deshalb nur noch die vier individuellen Nullpunkte
 gleichzeitig über 30 Sekunden. Für den bidirektionalen Batteriestromsensor sind
 -4, 0 und +4 A und für den Spannungssensor 8 und 14 V vorgesehen.
@@ -218,8 +219,13 @@ Referenzmessgerät erfasst.
 ### Strommessung GPIO36/39/34/35
 
 Die Hall-Strombahnen der ACS712 sind galvanisch von ihren ADC-Ausgängen
-getrennt. Die Steigung ist fest auf 43,5 ADC-Digits/A eingestellt; die
-kanalabhängigen Nullpunkte werden gemeinsam bestimmt.
+getrennt. Die Steigung ergibt sich aus dem Spannungsteiler (Standard
+30 kΩ/100 kΩ, 66,9 ADC-Digits/A, überschreibbar in `config.json`); die
+kanalabhängigen Nullpunkte werden gemeinsam bestimmt. Gespeicherte Nullpunkte
+gelten nur für den Teiler, mit dem sie gemessen wurden: Passt das beim Start
+ermittelte Teilerverhältnis nicht zum gespeicherten (zum Beispiel nach dem Wechsel
+von 22 kΩ/22 kΩ auf 30 kΩ/100 kΩ), werden sie ignoriert und die Nullpunktmessung
+muss wiederholt werden. Bis dahin gilt ein geschätzter Nullpunkt.
 
 1. Platine und alle ACS712 mit 5 V versorgen, durch ihre Strompfade aber keinen
    Strom schicken.
@@ -281,6 +287,32 @@ Minimum/-Maximum, 5-V-Versorgung und Sensortemperatur als CSV festgehalten
 werden. Anschließend werden unabhängige Zwischenpunkte geprüft; sie dürfen nicht
 dieselben Punkte sein, aus denen die Kurve erzeugt wurde.
 
+### Parameterdatei `config.json`
+
+Die Umrechnung von ADC-Rohwerten in Strom und Spannung sowie einige Schwellwerte
+stehen in `data/config.json` (LittleFS, Upload mit `pio run --target uploadfs`).
+Die Datei wird beim Start gelesen. Fehlt sie oder ein Eintrag, ungültige oder
+unplausible Werte kommen vor, gilt der Standardwert aus dem Code; die Firmware
+meldet das auf der seriellen Schnittstelle.
+
+| Schlüssel | Standard | Bedeutung |
+| --- | --- | --- |
+| `currentSensors.dividerUpperOhm` | 30000 | Längswiderstand (R1/R3/R5/R7) |
+| `currentSensors.dividerLowerOhm` | 100000 | Widerstand nach GND (R2/R4/R6/R14) |
+| `currentSensors.rawPerAmp` | 0 | Steigung in Digits/A; 0 = aus dem Teiler berechnet |
+| `currentSensors.zeroRaw` | 2170 | geschätzter Nullpunkt bis zur Nullpunktmessung |
+| `batteryVoltage.rawPerVolt` | 218,33 | Steigung ohne Kalibrierpunkte |
+| `batteryCurrent.rawPerAmp` / `.zeroRaw` | 24,82 / 1551 | Vorgaben des Batteriestromkanals |
+| `thresholds.currentNoiseFloorA` | 0,10 | Strom darunter gilt als 0 A |
+| `thresholds.bikePowerNoiseFloorW` | 5 | Leistung darunter gilt als 0 W |
+| `thresholds.significantPowerChangeW` | 10 | Änderung, die sofort gesendet wird |
+
+Die berechnete Steigung ist `43,5 · Verhältnis / 0,5` mit
+`Verhältnis = unten / (oben + unten)`; 43,5 Digits/A wurden mit dem früheren
+22 kΩ/22 kΩ-Teiler gemessen. Die wirksamen Werte liefert
+`/calibration.json` (`currentRawPerAmp`, `currentDivider`).
+`config.json` wird von der Kalibriersicherung nicht überschrieben.
+
 ### Konfiguration an den ESP32
 
 ```json
@@ -299,6 +331,7 @@ Die vier Positionen entsprechen Bike 1 bis Bike 4. Die Firmware speichert die Au
 ├── data/              Weboberfläche für LittleFS
 │   ├── index.html
 │   ├── config.html
+│   ├── config.json    Umrechnungsparameter und Schwellwerte
 │   ├── app.css
 │   └── app.js
 ├── qr_codes/          WLAN-, Live- und Admin-QR-Codes (PNG/SVG)

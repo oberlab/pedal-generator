@@ -8,12 +8,6 @@ namespace {
 constexpr uint8_t CURRENT_PINS[CURRENT_CHANNEL_COUNT] = {36, 39, 34, 35};
 constexpr uint8_t BATTERY_VOLTAGE_PIN = 33;
 constexpr uint8_t BATTERY_CURRENT_PIN = 32;
-constexpr float DEFAULT_VOLTAGE_RAW_PER_VOLT = 2620.0F / 12.0F;
-// Provisional for a bidirectional 5 V / 50 A Hall sensor with 40 mV/A
-// sensitivity and the same 22k/22k divider as the bike current channels.
-// It is not used for system power until two real calibration points exist.
-constexpr float DEFAULT_BATTERY_CURRENT_RAW_PER_AMP =
-    (2792.0F - 1551.0F) / 50.0F;
 
 float interpolatePair(const uint16_t raw, const CalibrationPoint &left,
                       const CalibrationPoint &right) {
@@ -121,7 +115,7 @@ bool Hardware::update(const uint32_t nowMs) {
   voltage.rawMin = voltageMinimum_;
   voltage.rawMax = voltageMaximum_;
   voltage.value = calibratedValue(voltage.raw, voltageCalibration_,
-                                  DEFAULT_VOLTAGE_RAW_PER_VOLT, 0.0F);
+                                  parameters_.voltageRawPerVolt, 0.0F);
   voltage.valid = voltageMaximum_ < 4095;
   Sample &batteryCurrent = snapshot_.batteryCurrent;
   batteryCurrent.raw = static_cast<uint16_t>(
@@ -130,9 +124,10 @@ bool Hardware::update(const uint32_t nowMs) {
   batteryCurrent.rawMax = batteryCurrentMaximum_;
   batteryCurrent.value = calibratedValue(
       batteryCurrent.raw, batteryCurrentCalibration_,
-      DEFAULT_BATTERY_CURRENT_RAW_PER_AMP, 1551.0F);
+      parameters_.batteryCurrentRawPerAmp, parameters_.batteryCurrentZeroRaw);
   batteryCurrent.valid = batteryCurrentMinimum_ > 0 &&
                          batteryCurrentMaximum_ < 4095;
+  const float currentRawPerAmp = parameters_.effectiveCurrentRawPerAmp();
   for (uint8_t index = 0; index < CURRENT_CHANNEL_COUNT; ++index) {
     Sample &current = snapshot_.current[index];
     current.raw = static_cast<uint16_t>(
@@ -140,7 +135,7 @@ bool Hardware::update(const uint32_t nowMs) {
     current.rawMin = currentMinimum_[index];
     current.rawMax = currentMaximum_[index];
     current.value = calibratedValue(current.raw, currentCalibration_[index],
-                                    CURRENT_RAW_PER_AMP, 1551.0F);
+                                    currentRawPerAmp, parameters_.currentZeroRaw);
     current.valid = currentMinimum_[index] > 0 && currentMaximum_[index] < 4095;
   }
   snapshot_.sampledAtMs = millis();

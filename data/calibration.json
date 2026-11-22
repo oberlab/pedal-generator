@@ -2,7 +2,7 @@
   "format": "pedal-kino-calibration",
   "version": 1,
   "averagingWindowMs": 500,
-  "currentRawPerAmp": 43.5,
+  "currentRawPerAmp": 66.9,
   "currentZeroCalibration": {
     "active": false,
     "durationMs": 30000,
@@ -16,7 +16,7 @@
         {
           "valueA": 0,
           "calibrated": true,
-          "raw": 1463
+          "raw": 2332
         }
       ]
     },
@@ -26,7 +26,7 @@
         {
           "valueA": 0,
           "calibrated": true,
-          "raw": 1456
+          "raw": 2327
         }
       ]
     },
@@ -36,7 +36,7 @@
         {
           "valueA": 0,
           "calibrated": true,
-          "raw": 1450
+          "raw": 2322
         }
       ]
     },
@@ -46,7 +46,7 @@
         {
           "valueA": 0,
           "calibrated": true,
-          "raw": 1441
+          "raw": 2339
         }
       ]
     }
@@ -63,7 +63,7 @@
       {
         "valueV": 8,
         "calibrated": true,
-        "raw": 1577
+        "raw": 1562
       },
       {
         "valueV": 10,
@@ -78,37 +78,24 @@
       {
         "valueV": 14,
         "calibrated": true,
-        "raw": 2841
+        "raw": 2857
       }
     ]
   },
   "batteryCurrent": {
-    "calibrated": false,
+    "calibrated": true,
+    "rawPerAmp": 27.5,
+    "zeroCalibration": {
+      "active": false,
+      "durationMs": 30000,
+      "sampleCount": 59,
+      "elapsedMs": 0
+    },
     "points": [
       {
-        "valueA": -4,
-        "calibrated": false,
-        "raw": null
-      },
-      {
-        "valueA": -2,
-        "calibrated": false,
-        "raw": null
-      },
-      {
         "valueA": 0,
-        "calibrated": false,
-        "raw": null
-      },
-      {
-        "valueA": 2,
-        "calibrated": false,
-        "raw": null
-      },
-      {
-        "valueA": 4,
-        "calibrated": false,
-        "raw": null
+        "calibrated": true,
+        "raw": 2494
       }
     ]
   }

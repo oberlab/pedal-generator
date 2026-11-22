@@ -21,14 +21,9 @@ constexpr uint8_t BIKE_COUNT = 4;
 constexpr uint8_t MAX_COMPLETED_RIDERS = 32;
 constexpr size_t RIDER_NAME_LENGTH = 32;
 constexpr uint32_t BROADCAST_INTERVAL_MS = 1000;
-constexpr char CONFIG_FILE[] = "/config.json";
-// Divider ratio of the bike current channels before /config.json existed
-// (22k/22k). Zero points saved without a divider record belong to this ratio.
-constexpr float LEGACY_CURRENT_DIVIDER_RATIO = 0.5F;
-// Defaults; each can be overridden in /config.json (see loadConfigFile()).
-float SIGNIFICANT_POWER_CHANGE_W = 10.0F;
-float CURRENT_NOISE_FLOOR_A = 0.10F;
-float BIKE_POWER_NOISE_FLOOR_W = 5.0F;
+constexpr float SIGNIFICANT_POWER_CHANGE_W = 10.0F;
+constexpr float CURRENT_NOISE_FLOOR_A = 0.10F;
+constexpr float BIKE_POWER_NOISE_FLOOR_W = 5.0F;
 constexpr uint8_t LED_READY_PIN = 18;
 constexpr uint8_t LED_FAULT_PIN = 19;
 constexpr uint8_t LED_ON = LOW;
@@ -36,6 +31,7 @@ constexpr uint8_t LED_OFF = HIGH;
 constexpr uint32_t WIFI_CONNECT_TIMEOUT_MS = 30000;
 constexpr uint32_t RESTART_DELAY_MS = 1500;
 constexpr uint32_t CURRENT_ZERO_CALIBRATION_DURATION_MS = 30000;
+constexpr uint32_t BATTERY_CURRENT_ZERO_CALIBRATION_DURATION_MS = 30000;
 constexpr uint32_t VOLTAGE_CALIBRATION_DURATION_MS = 30000;
 
 struct BikeState {
@@ -86,6 +82,10 @@ bool currentZeroCalibrationActive = false;
 uint32_t currentZeroCalibrationStartedAt = 0;
 uint32_t currentZeroCalibrationSums[BIKE_COUNT] = {};
 uint16_t currentZeroCalibrationSampleCount = 0;
+bool batteryCurrentZeroCalibrationActive = false;
+uint32_t batteryCurrentZeroCalibrationStartedAt = 0;
+uint32_t batteryCurrentZeroCalibrationSum = 0;
+uint16_t batteryCurrentZeroCalibrationSampleCount = 0;
 bool voltageCalibrationActive = false;
 uint8_t voltageCalibrationPoint = 0;
 uint32_t voltageCalibrationStartedAt = 0;
@@ -148,124 +148,16 @@ void setRiderName(const uint16_t riderId, const char *requestedName) {
   significantChangePending = true;
 }
 
-// Returns the value of `key` in `section`, or `fallback` if the entry is
-// missing, not a number or outside [minimum, maximum].
-float configValue(const JsonObjectConst section, const char *key,
-                  const float fallback, const float minimum,
-                  const float maximum) {
-  if (section[key].isNull()) return fallback;
-  const float value = section[key] | fallback;
-  if (!(value >= minimum && value <= maximum)) {
-    Serial.printf("config.json: %s = %g is out of range, using %g\n", key,
-                  static_cast<double>(value), static_cast<double>(fallback));
-    return fallback;
-  }
-  return value;
-}
-
-// Loads the optional parameter file /config.json from LittleFS. Every value
-// that is missing or invalid keeps its default from the code (for the bike
-// current channels: the 30k/100k divider of schematic rev 0.2).
-void loadConfigFile() {
-  measurement::Parameters parameters;
-  bool fromFile = false;
-
-  if (!LittleFS.exists(CONFIG_FILE)) {
-    Serial.printf("%s not found, using built-in defaults\n", CONFIG_FILE);
-  } else {
-    File file = LittleFS.open(CONFIG_FILE, "r");
-    JsonDocument document;
-    const DeserializationError error = deserializeJson(document, file);
-    file.close();
-    const char *format = document["format"] | "pedal-kino-config";
-    if (error) {
-      Serial.printf("%s invalid (%s), using built-in defaults\n", CONFIG_FILE,
-                    error.c_str());
-    } else if (strcmp(format, "pedal-kino-config") != 0) {
-      Serial.printf("%s has unexpected format '%s', using built-in defaults\n",
-                    CONFIG_FILE, format);
-    } else {
-      fromFile = true;
-      const JsonObjectConst currents =
-          document["currentSensors"].as<JsonObjectConst>();
-      parameters.currentDividerUpperOhm =
-          configValue(currents, "dividerUpperOhm",
-                      parameters.currentDividerUpperOhm, 100.0F, 10.0e6F);
-      parameters.currentDividerLowerOhm =
-          configValue(currents, "dividerLowerOhm",
-                      parameters.currentDividerLowerOhm, 100.0F, 10.0e6F);
-      // 0 or missing: derive the slope from the divider.
-      parameters.currentRawPerAmp = configValue(
-          currents, "rawPerAmp", parameters.currentRawPerAmp, 0.0F, 1000.0F);
-      parameters.currentZeroRaw = configValue(
-          currents, "zeroRaw", parameters.currentZeroRaw, 0.0F, 4095.0F);
-
-      const JsonObjectConst voltage =
-          document["batteryVoltage"].as<JsonObjectConst>();
-      parameters.voltageRawPerVolt = configValue(
-          voltage, "rawPerVolt", parameters.voltageRawPerVolt, 10.0F, 1000.0F);
-
-      const JsonObjectConst batteryCurrent =
-          document["batteryCurrent"].as<JsonObjectConst>();
-      parameters.batteryCurrentRawPerAmp =
-          configValue(batteryCurrent, "rawPerAmp",
-                      parameters.batteryCurrentRawPerAmp, 1.0F, 1000.0F);
-      parameters.batteryCurrentZeroRaw =
-          configValue(batteryCurrent, "zeroRaw",
-                      parameters.batteryCurrentZeroRaw, 0.0F, 4095.0F);
-
-      const JsonObjectConst thresholds =
-          document["thresholds"].as<JsonObjectConst>();
-      CURRENT_NOISE_FLOOR_A = configValue(thresholds, "currentNoiseFloorA",
-                                          CURRENT_NOISE_FLOOR_A, 0.0F, 5.0F);
-      BIKE_POWER_NOISE_FLOOR_W =
-          configValue(thresholds, "bikePowerNoiseFloorW",
-                      BIKE_POWER_NOISE_FLOOR_W, 0.0F, 500.0F);
-      SIGNIFICANT_POWER_CHANGE_W =
-          configValue(thresholds, "significantPowerChangeW",
-                      SIGNIFICANT_POWER_CHANGE_W, 1.0F, 500.0F);
-    }
-  }
-
-  measurementHardware.setParameters(parameters);
-  Serial.printf(
-      "Parameters (%s): bike divider %.0f/%.0f ohm (ratio %.4f), "
-      "%.2f digits/A, default zero %.0f\n",
-      fromFile ? "config.json" : "defaults",
-      static_cast<double>(parameters.currentDividerUpperOhm),
-      static_cast<double>(parameters.currentDividerLowerOhm),
-      static_cast<double>(parameters.currentDividerRatio()),
-      static_cast<double>(parameters.effectiveCurrentRawPerAmp()),
-      static_cast<double>(parameters.currentZeroRaw));
-}
-
 void currentCalibrationKey(char *key, const size_t keySize,
                            const uint8_t channel, const uint8_t point) {
   snprintf(key, keySize, "c%up%u", channel, point);
 }
 
 void loadCalibration() {
-  // The zero points are raw ADC values and only valid for the divider they
-  // were measured with. Zero points of a different divider are ignored (but
-  // kept in the preferences) until the zero calibration is repeated.
-  const float dividerRatio =
-      measurementHardware.parameters().currentDividerRatio();
-  const float savedDividerRatio =
-      preferences.getFloat("cDiv", LEGACY_CURRENT_DIVIDER_RATIO);
-  const bool zeroMatchesDivider =
-      fabsf(savedDividerRatio - dividerRatio) <= 0.001F;
-  if (!zeroMatchesDivider) {
-    Serial.printf(
-        "Stored bike zero points belong to divider ratio %.4f, now %.4f: "
-        "ignored, repeat the zero calibration\n",
-        static_cast<double>(savedDividerRatio),
-        static_cast<double>(dividerRatio));
-  }
   for (uint8_t channel = 0; channel < BIKE_COUNT; ++channel) {
     char maskKey[8];
     snprintf(maskKey, sizeof(maskKey), "c%uMask", channel);
-    const uint8_t mask =
-        zeroMatchesDivider ? preferences.getUChar(maskKey, 0) : 0;
+    const uint8_t mask = preferences.getUChar(maskKey, 0);
     for (uint8_t point = 0;
          point < measurement::CURRENT_CALIBRATION_POINT_COUNT; ++point) {
       char rawKey[8];
@@ -286,14 +178,11 @@ void loadCalibration() {
         (voltageMask & (1U << point)) != 0);
   }
 
-  const uint8_t batteryCurrentMask = preferences.getUChar("bMask", 0);
-  for (uint8_t point = 0;
-       point < measurement::BATTERY_CURRENT_CALIBRATION_POINT_COUNT; ++point) {
-    char rawKey[8];
-    snprintf(rawKey, sizeof(rawKey), "bp%u", point);
+  // Zero point of the battery current sensor. The keys "bMask"/"bp0".."bp4"
+  // of the former +-4 A calibration are no longer read.
+  if (preferences.isKey("bZeroRaw")) {
     measurementHardware.setBatteryCurrentCalibration(
-        point, preferences.getUShort(rawKey, 0),
-        (batteryCurrentMask & (1U << point)) != 0);
+        0, preferences.getUShort("bZeroRaw", 0), true);
   }
 }
 
@@ -310,8 +199,6 @@ void saveCurrentCalibration(const uint8_t channel, const uint8_t point,
   currentCalibrationKey(rawKey, sizeof(rawKey), channel, point);
   if (calibrated) preferences.putUShort(rawKey, raw);
   else preferences.remove(rawKey);
-  preferences.putFloat("cDiv",
-                       measurementHardware.parameters().currentDividerRatio());
   measurementHardware.setCurrentCalibration(channel, point, raw, calibrated);
 }
 
@@ -329,18 +216,9 @@ void saveVoltageCalibration(const uint8_t point, const uint16_t raw,
   measurementHardware.setVoltageCalibration(point, raw, calibrated);
 }
 
-void saveBatteryCurrentCalibration(const uint8_t point, const uint16_t raw,
-                                   const bool calibrated) {
-  uint8_t mask = preferences.getUChar("bMask", 0);
-  if (calibrated) mask |= 1U << point;
-  else mask &= ~(1U << point);
-  preferences.putUChar("bMask", mask);
-
-  char rawKey[8];
-  snprintf(rawKey, sizeof(rawKey), "bp%u", point);
-  if (calibrated) preferences.putUShort(rawKey, raw);
-  else preferences.remove(rawKey);
-  measurementHardware.setBatteryCurrentCalibration(point, raw, calibrated);
+void saveBatteryCurrentZero(const uint16_t raw) {
+  preferences.putUShort("bZeroRaw", raw);
+  measurementHardware.setBatteryCurrentCalibration(0, raw, true);
 }
 
 const char *powerFlowState() {
@@ -353,11 +231,7 @@ const char *powerFlowState() {
 void addCalibrationJson(JsonObject calibration, const bool includeLiveValues) {
   const measurement::Snapshot &measurements = measurementHardware.snapshot();
   calibration["averagingWindowMs"] = measurement::ADC_AVERAGING_WINDOW_MS;
-  const measurement::Parameters &parameters = measurementHardware.parameters();
-  calibration["currentRawPerAmp"] = parameters.effectiveCurrentRawPerAmp();
-  JsonObject divider = calibration["currentDivider"].to<JsonObject>();
-  divider["upperOhm"] = parameters.currentDividerUpperOhm;
-  divider["lowerOhm"] = parameters.currentDividerLowerOhm;
+  calibration["currentRawPerAmp"] = measurement::CURRENT_RAW_PER_AMP;
   JsonObject zeroCalibration = calibration["currentZeroCalibration"].to<JsonObject>();
   zeroCalibration["active"] = currentZeroCalibrationActive;
   zeroCalibration["durationMs"] = CURRENT_ZERO_CALIBRATION_DURATION_MS;
@@ -421,6 +295,19 @@ void addCalibrationJson(JsonObject calibration, const bool includeLiveValues) {
   }
   batteryCurrentCalibration["calibrated"] =
       measurementHardware.batteryCurrentIsCalibrated();
+  batteryCurrentCalibration["rawPerAmp"] = measurement::BATTERY_CURRENT_RAW_PER_AMP;
+  JsonObject batteryCurrentZero =
+      batteryCurrentCalibration["zeroCalibration"].to<JsonObject>();
+  batteryCurrentZero["active"] = batteryCurrentZeroCalibrationActive;
+  batteryCurrentZero["durationMs"] = BATTERY_CURRENT_ZERO_CALIBRATION_DURATION_MS;
+  batteryCurrentZero["sampleCount"] = batteryCurrentZeroCalibrationSampleCount;
+  const uint32_t batteryCurrentZeroElapsedMs =
+      batteryCurrentZeroCalibrationActive
+          ? millis() - batteryCurrentZeroCalibrationStartedAt
+          : 0;
+  batteryCurrentZero["elapsedMs"] =
+      min(batteryCurrentZeroElapsedMs,
+          BATTERY_CURRENT_ZERO_CALIBRATION_DURATION_MS);
   JsonArray batteryCurrentPoints =
       batteryCurrentCalibration["points"].to<JsonArray>();
   for (uint8_t point = 0;
@@ -590,6 +477,31 @@ void collectCurrentZeroCalibration(const measurement::Snapshot &snapshot) {
   significantChangePending = true;
 }
 
+void beginBatteryCurrentZeroCalibration() {
+  batteryCurrentZeroCalibrationActive = true;
+  batteryCurrentZeroCalibrationStartedAt = millis();
+  batteryCurrentZeroCalibrationSum = 0;
+  batteryCurrentZeroCalibrationSampleCount = 0;
+  significantChangePending = true;
+}
+
+void collectBatteryCurrentZeroCalibration(const measurement::Snapshot &snapshot) {
+  if (!batteryCurrentZeroCalibrationActive) return;
+  batteryCurrentZeroCalibrationSum += snapshot.batteryCurrent.raw;
+  ++batteryCurrentZeroCalibrationSampleCount;
+  if (millis() - batteryCurrentZeroCalibrationStartedAt <
+          BATTERY_CURRENT_ZERO_CALIBRATION_DURATION_MS ||
+      batteryCurrentZeroCalibrationSampleCount == 0) {
+    return;
+  }
+  saveBatteryCurrentZero(static_cast<uint16_t>(
+      (batteryCurrentZeroCalibrationSum +
+       batteryCurrentZeroCalibrationSampleCount / 2) /
+      batteryCurrentZeroCalibrationSampleCount));
+  batteryCurrentZeroCalibrationActive = false;
+  significantChangePending = true;
+}
+
 void beginVoltageCalibration(const uint8_t point) {
   voltageCalibrationActive = true;
   voltageCalibrationPoint = point;
@@ -623,6 +535,7 @@ void updateMeasurements() {
 
   const measurement::Snapshot &snapshot = measurementHardware.snapshot();
   collectCurrentZeroCalibration(snapshot);
+  collectBatteryCurrentZeroCalibration(snapshot);
   collectVoltageCalibration(snapshot);
   systemState.batteryVoltage = snapshot.batteryVoltage.value;
   systemState.batteryCurrentCalibrated =
@@ -756,11 +669,6 @@ void applyCalibration(const JsonDocument &document) {
       }
       saveVoltageCalibration(point, 0, false);
     }
-  } else if (strcmp(sensor, "batteryCurrent") == 0) {
-    if (point >= measurement::BATTERY_CURRENT_CALIBRATION_POINT_COUNT) return;
-    if (calibrated && snapshot.sequence == 0) return;
-    saveBatteryCurrentCalibration(point, snapshot.batteryCurrent.raw,
-                                  calibrated);
   } else {
     return;
   }
@@ -787,6 +695,11 @@ void handleWebSocketMessage(void *argument, uint8_t *data, const size_t length) 
     const char *password = document["password"] | "";
     if (strcmp(password, CALIBRATION_PASSWORD) == 0) {
       beginCurrentZeroCalibration();
+    }
+  } else if (strcmp(type, "batteryCurrentZeroCalibration") == 0) {
+    const char *password = document["password"] | "";
+    if (strcmp(password, CALIBRATION_PASSWORD) == 0) {
+      beginBatteryCurrentZeroCalibration();
     }
   } else if (strcmp(type, "resetEnergy") == 0) {
     const uint8_t bike = document["bike"] | 0;
@@ -948,7 +861,6 @@ void setup() {
     startupFault = true;
   }
 
-  loadConfigFile();
   measurementHardware.begin();
   loadCalibration();
   updateMeasurements();

@@ -6,51 +6,23 @@ namespace measurement {
 
 constexpr uint8_t CURRENT_CHANNEL_COUNT = 4;
 constexpr uint8_t CURRENT_CALIBRATION_POINT_COUNT = 1;
+// Bike current channels: ACS712 output -> 30k/100k divider -> ADC (ratio 0.769).
+// 43.5 digits/A were measured with the former 22k/22k divider (ratio 0.5);
+// scaled to the new ratio: 43.5 * 0.769 / 0.5 = 66.9.
+constexpr float CURRENT_RAW_PER_AMP = 66.9F;
+// Estimated raw value at 0 A (about 1.92 V at the ADC pin), only used until
+// the zero calibration has been stored. Accuracy roughly +-60 digits.
+constexpr float CURRENT_DEFAULT_ZERO_RAW = 2170.0F;
 constexpr uint8_t VOLTAGE_CALIBRATION_POINT_COUNT = 4;
-constexpr uint8_t BATTERY_CURRENT_CALIBRATION_POINT_COUNT = 5;
+// Battery current (GPIO32): bidirectional Hall sensor (WCS1600), 20k/100k
+// divider (ratio 0.833). Fixed slope measured with +-4 A DC (raw 2467 at -4 A,
+// 2687 at +4 A): 27.5 digits/A. Like the bike channels only the zero point is
+// calibrated; the default zero (midpoint of the two measurements) is used until
+// it has been stored.
+constexpr uint8_t BATTERY_CURRENT_CALIBRATION_POINT_COUNT = 1;
+constexpr float BATTERY_CURRENT_RAW_PER_AMP = 27.5F;
+constexpr float BATTERY_CURRENT_DEFAULT_ZERO_RAW = 2577.0F;
 constexpr uint16_t ADC_AVERAGING_WINDOW_MS = 500;
-
-// Reference measurement of the bike current channels: 43.5 ADC digits/A were
-// measured with the former 22k/22k divider (ratio 0.5). Other dividers scale
-// this value with their ratio as long as no explicit rawPerAmp is configured.
-constexpr float REFERENCE_CURRENT_DIVIDER_RATIO = 0.5F;
-constexpr float REFERENCE_CURRENT_RAW_PER_AMP = 43.5F;
-
-// Defaults of the bike current channels (ACS712-30A, schematic rev 0.2):
-// R1/R3/R5/R7 = 30k in series, R2/R4/R6/R14 = 100k to GND.
-constexpr float DEFAULT_CURRENT_DIVIDER_UPPER_OHM = 30000.0F;
-constexpr float DEFAULT_CURRENT_DIVIDER_LOWER_OHM = 100000.0F;
-// Estimated raw value at 0 A (about 1.92 V at the ADC pin). Only used until the
-// zero calibration has been stored; interpolated from the battery-voltage
-// calibration curve, accuracy roughly +-60 digits.
-constexpr float DEFAULT_CURRENT_ZERO_RAW = 2170.0F;
-
-// Runtime parameters of the raw -> physical value conversion. The defaults
-// below are used for every value that is not set in /config.json.
-struct Parameters {
-  float currentDividerUpperOhm = DEFAULT_CURRENT_DIVIDER_UPPER_OHM;
-  float currentDividerLowerOhm = DEFAULT_CURRENT_DIVIDER_LOWER_OHM;
-  // 0 = derive from the divider (see REFERENCE_CURRENT_*).
-  float currentRawPerAmp = 0.0F;
-  float currentZeroRaw = DEFAULT_CURRENT_ZERO_RAW;
-  float voltageRawPerVolt = 2620.0F / 12.0F;
-  // Provisional for a bidirectional 5 V / 50 A Hall sensor with 40 mV/A
-  // sensitivity and the same 22k/22k divider as the former bike channels.
-  // It is not used for system power until two real calibration points exist.
-  float batteryCurrentRawPerAmp = (2792.0F - 1551.0F) / 50.0F;
-  float batteryCurrentZeroRaw = 1551.0F;
-
-  // Voltage at the ADC pin per volt at the sensor output.
-  float currentDividerRatio() const {
-    return currentDividerLowerOhm / (currentDividerUpperOhm + currentDividerLowerOhm);
-  }
-  float effectiveCurrentRawPerAmp() const {
-    return currentRawPerAmp > 0.0F
-               ? currentRawPerAmp
-               : REFERENCE_CURRENT_RAW_PER_AMP * currentDividerRatio() /
-                     REFERENCE_CURRENT_DIVIDER_RATIO;
-  }
-};
 
 struct CalibrationPoint {
   uint16_t raw = 0;
@@ -82,8 +54,6 @@ class Hardware {
   void begin();
   bool update(uint32_t nowMs);
   const Snapshot &snapshot() const { return snapshot_; }
-  void setParameters(const Parameters &parameters) { parameters_ = parameters; }
-  const Parameters &parameters() const { return parameters_; }
   void setCurrentCalibration(uint8_t channel, uint8_t point, uint16_t raw,
                              bool calibrated);
   void setVoltageCalibration(uint8_t point, uint16_t raw, bool calibrated);
@@ -99,7 +69,6 @@ class Hardware {
   void resetAveragingWindow(uint32_t nowMs);
 
   Snapshot snapshot_;
-  Parameters parameters_;
   CalibrationPoint currentCalibration_[CURRENT_CHANNEL_COUNT]
                                       [CURRENT_CALIBRATION_POINT_COUNT];
   CalibrationPoint voltageCalibration_[VOLTAGE_CALIBRATION_POINT_COUNT];

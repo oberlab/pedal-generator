@@ -8,6 +8,7 @@ namespace {
 constexpr uint8_t CURRENT_PINS[CURRENT_CHANNEL_COUNT] = {36, 39, 34, 35};
 constexpr uint8_t BATTERY_VOLTAGE_PIN = 33;
 constexpr uint8_t BATTERY_CURRENT_PIN = 32;
+constexpr float DEFAULT_VOLTAGE_RAW_PER_VOLT = 2620.0F / 12.0F;
 
 float interpolatePair(const uint16_t raw, const CalibrationPoint &left,
                       const CalibrationPoint &right) {
@@ -80,11 +81,9 @@ void Hardware::begin() {
   for (uint8_t point = 0; point < VOLTAGE_CALIBRATION_POINT_COUNT; ++point) {
     voltageCalibration_[point].value = voltageValues[point];
   }
-  constexpr float batteryCurrentValues[BATTERY_CURRENT_CALIBRATION_POINT_COUNT] = {
-      -4.0F, -2.0F, 0.0F, 2.0F, 4.0F};
   for (uint8_t point = 0;
        point < BATTERY_CURRENT_CALIBRATION_POINT_COUNT; ++point) {
-    batteryCurrentCalibration_[point].value = batteryCurrentValues[point];
+    batteryCurrentCalibration_[point].value = static_cast<float>(point);
   }
   resetAveragingWindow(millis());
 }
@@ -115,7 +114,7 @@ bool Hardware::update(const uint32_t nowMs) {
   voltage.rawMin = voltageMinimum_;
   voltage.rawMax = voltageMaximum_;
   voltage.value = calibratedValue(voltage.raw, voltageCalibration_,
-                                  parameters_.voltageRawPerVolt, 0.0F);
+                                  DEFAULT_VOLTAGE_RAW_PER_VOLT, 0.0F);
   voltage.valid = voltageMaximum_ < 4095;
   Sample &batteryCurrent = snapshot_.batteryCurrent;
   batteryCurrent.raw = static_cast<uint16_t>(
@@ -124,10 +123,9 @@ bool Hardware::update(const uint32_t nowMs) {
   batteryCurrent.rawMax = batteryCurrentMaximum_;
   batteryCurrent.value = calibratedValue(
       batteryCurrent.raw, batteryCurrentCalibration_,
-      parameters_.batteryCurrentRawPerAmp, parameters_.batteryCurrentZeroRaw);
+      BATTERY_CURRENT_RAW_PER_AMP, BATTERY_CURRENT_DEFAULT_ZERO_RAW);
   batteryCurrent.valid = batteryCurrentMinimum_ > 0 &&
                          batteryCurrentMaximum_ < 4095;
-  const float currentRawPerAmp = parameters_.effectiveCurrentRawPerAmp();
   for (uint8_t index = 0; index < CURRENT_CHANNEL_COUNT; ++index) {
     Sample &current = snapshot_.current[index];
     current.raw = static_cast<uint16_t>(
@@ -135,7 +133,8 @@ bool Hardware::update(const uint32_t nowMs) {
     current.rawMin = currentMinimum_[index];
     current.rawMax = currentMaximum_[index];
     current.value = calibratedValue(current.raw, currentCalibration_[index],
-                                    currentRawPerAmp, parameters_.currentZeroRaw);
+                                    CURRENT_RAW_PER_AMP,
+                                    CURRENT_DEFAULT_ZERO_RAW);
     current.valid = currentMinimum_[index] > 0 && currentMaximum_[index] < 4095;
   }
   snapshot_.sampledAtMs = millis();
@@ -199,11 +198,8 @@ const CalibrationPoint &Hardware::batteryCurrentCalibration(
 }
 
 bool Hardware::batteryCurrentIsCalibrated() const {
-  uint8_t count = 0;
-  for (const CalibrationPoint &point : batteryCurrentCalibration_) {
-    if (point.calibrated) ++count;
-  }
-  return count >= 2;
+  // The zero point (point 0) has been measured and stored.
+  return batteryCurrentCalibration_[0].calibrated;
 }
 
 }  // namespace measurement

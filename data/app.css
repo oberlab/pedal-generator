@@ -107,7 +107,9 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
 .battery-copy { min-width: 145px; position: relative; z-index: 1; }
 .battery-copy h2 { margin: 12px 0 7px; font-size: clamp(20px, 2.3vw, 30px); letter-spacing: -.035em; }
 .battery-copy p { margin: 0; color: var(--muted); }
-.flow-badge { display: inline-flex; padding: 6px 10px; border-radius: 999px; color: var(--yellow); background: rgba(255, 209, 102, .1); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.flow-badge { display: inline-grid; max-width: 100%; padding: 6px 10px; border-radius: 999px; color: var(--yellow); background: rgba(255, 209, 102, .1); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.flow-badge > span { grid-area: 1 / 1; }
+.flow-badge .flow-ghost { visibility: hidden; }
 .flow-badge[data-state="charging"] { color: var(--green); background: rgba(84, 227, 154, .1); }
 .flow-badge[data-state="discharging"] { color: var(--orange); background: rgba(255, 140, 97, .1); }
 .metric-card { min-height: 110px; padding: 20px; display: flex; align-items: center; gap: 14px; }
@@ -118,6 +120,11 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
 .metric-card small, .metric-card strong { display: block; }
 .metric-card small { color: var(--muted); font-size: 11px; margin-bottom: 5px; }
 .metric-card strong { font-size: 24px; letter-spacing: -.04em; }
+.metric-body { flex: 1; min-width: 0; }
+.power-bar { position: relative; height: 10px; margin-top: 10px; border-radius: 999px; background: rgba(245,251,247,.1); overflow: hidden; }
+.power-bar::after { content: ""; position: absolute; left: 30%; top: 0; bottom: 0; width: 2px; background: rgba(12,20,18,.8); }
+.power-bar span { display: block; height: 100%; border-radius: 999px; background: var(--orange); transition: width .45s cubic-bezier(.2,.8,.2,1), background-color .3s; }
+.power-bar span[data-state="good"] { background: var(--green); }
 
 .subheading { margin-bottom: 16px; }
 .subheading h2 { margin: 3px 0 0; font-size: 25px; letter-spacing: -.04em; }
@@ -246,7 +253,7 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
 .calibration-sensors { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(460px, 100%), 1fr)); gap: 14px; }
 .calibration-card { padding: 22px; }
 .calibration-card.voltage-calibration, .calibration-card.battery-current-calibration, .calibration-card.bike-zero-calibration { grid-column: 1 / -1; }
-.battery-current-calibration .calibration-points { grid-template-columns: repeat(2, 1fr); }
+.battery-current-calibration .zero-channels { grid-template-columns: 1fr; }
 .calibration-card-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
 .calibration-card-head h3 { margin: 3px 0 0; font-size: 21px; }
 .live-raw { min-width: 94px; padding: 9px 12px; border: 1px solid rgba(104,169,255,.25); border-radius: 11px; text-align: right; background: rgba(104,169,255,.07); font-variant-numeric: tabular-nums; }
@@ -311,7 +318,7 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
   .calibration-heading-actions { margin-top: 10px; }
   .calibration-sensors { grid-template-columns: 1fr; }
   .calibration-card.voltage-calibration, .calibration-card.battery-current-calibration, .calibration-card.bike-zero-calibration { grid-column: auto; }
-  .voltage-calibration .calibration-points, .battery-current-calibration .calibration-points { grid-template-columns: 1fr; }
+  .voltage-calibration .calibration-points { grid-template-columns: 1fr; }
   .settings-card { align-items: flex-start; }
   .zero-channels { grid-template-columns: 1fr 1fr; }
   .info-card { display: block; }
@@ -332,6 +339,6 @@ main { width: 100%; min-height: calc(100vh - 84px); padding: 12px clamp(16px, 2.
   .ranking-energy { font-size: 21px; }
   .ranking-live { grid-column: 2 / -1; justify-self: start; }
   .zero-channels { grid-template-columns: 1fr; }
-  .bike-zero-calibration .calibration-card-head { align-items: stretch; flex-direction: column; }
+  .bike-zero-calibration .calibration-card-head, .battery-current-calibration .calibration-card-head { align-items: stretch; flex-direction: column; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; } }

@@ -206,7 +206,7 @@ Jeder gespeicherte Rohwert ist der Mittelwert aus ungefähr 60 aufeinanderfolgen
 
 ### Nullpunkte der vier Bike-Sensoren
 
-Für alle Bike-Sensoren gilt ein fester Faktor von **43,5 ADC-Digits/A**. Im
+Für alle Bike-Sensoren gilt ein fester Faktor von **66,9 ADC-Digits/A** (Spannungsteiler 30 kΩ/100 kΩ). Im
 normalen Betrieb wird deshalb nur der Nullpunkt neu bestimmt:
 
 1. Sicherstellen, dass durch **keinen** der vier Bike-Sensoren Strom fließt.
@@ -218,13 +218,18 @@ ESP32 gespeichert. Währenddessen dürfen keine Bikes bewegt oder belastet werde
 
 ### Bidirektionaler Batteriestrom an GPIO32
 
-Der Batteriesensor muss Laden und Entladen unterscheiden. Dafür sind die Punkte
-**−4 A**, **0 A** und **+4 A** vorgesehen. Die elektrische Richtung muss zur
-Beschriftung passen; hier darf kein Absolutwert gebildet werden.
+Der Batteriesensor muss Laden und Entladen unterscheiden. Er hat einen festen
+Faktor von **27,5 ADC-Digits/A**, nur der Nullpunkt wird gemessen. Die elektrische
+Richtung muss zur Beschriftung passen; hier darf kein Absolutwert gebildet werden.
 
-Jeder Punkt verwendet den über 500 ms gemittelten ADC-Rohwert. Vor dem Speichern
-muss der Strom stabil sein und mit einem geeigneten Amperemeter kontrolliert
-werden.
+1. Sicherstellen, dass durch den Batteriestromsensor **kein** Strom fließt.
+2. Unter **Nullpunkt Batteriestrom** auf **Nullpunkt 30 s messen** klicken und die
+   Sicherheitsabfrage bestätigen.
+3. Bis zum Abschluss warten. Der Nullpunkt wird über 30 Sekunden gemittelt und im
+   ESP32 gespeichert. Der Vorgang ist unabhängig von der Messung der Bike-Sensoren.
+
+Bis der Nullpunkt gespeichert ist, werden Batteriestrom und Batterieleistung nicht
+ausgegeben.
 
 ### Kalibrierdatei sichern
 
@@ -265,8 +270,8 @@ bestehen, die 30-Sekunden-Nullpunktmessung der Bike-Sensoren erneut durchführen
 ### Laden und Entladen sind vertauscht
 
 Nur beim Batteriestromsensor ist die Richtung relevant. Strompfad und Einbaurichtung
-kontrollieren und anschließend −4 A, 0 A und +4 A neu kalibrieren. Die Bike-Sensoren
-verwenden dagegen absichtlich den Betrag des Stroms.
+kontrollieren und gegebenenfalls umdrehen. Der Nullpunkt bleibt dabei gültig. Die
+Bike-Sensoren verwenden dagegen absichtlich den Betrag des Stroms.
 
 ## 9. Wartung und OTA
 

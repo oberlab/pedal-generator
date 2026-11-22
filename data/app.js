@@ -34,7 +34,7 @@
     })),
     network: { mode: null, ssid: null, ip: null, hostname: null },
     measurements: { sequence: null, sampledAtMs: null, batteryVoltage: null, batteryCurrent: null },
-    calibration: { averagingWindowMs: 500, currentRawPerAmp: 43.5, currentZeroCalibration: null, currents: [], voltage: null, batteryCurrent: null },
+    calibration: { averagingWindowMs: 500, currentRawPerAmp: 66.9, currentZeroCalibration: null, currents: [], voltage: null, batteryCurrent: null },
     leaderboard: [],
     nextRiderId: BIKE_COUNT + 1,
   };
@@ -59,6 +59,7 @@
     batteryCurrent: document.querySelector("#battery-current"),
     flowBadge: document.querySelector("#flow-badge"),
     generatedPower: document.querySelector("#generated-power"),
+    generatedBar: document.querySelector("#generated-bar"),
     loadPower: document.querySelector("#load-power"),
     clientCount: document.querySelector("#client-count"),
     bikeGrid: document.querySelector("#bike-grid"),
@@ -180,13 +181,30 @@
       </svg>`;
   }
 
+  // Skala der Batterie-Anzeige: Endpunkte +-400 W, "logarithmisch" (je groesser die Leistung, desto
+  // gestauchter), Totbereich um 0 W, in dem die Nadel auf 0 stehen bleibt.
+  const BATTERY_GAUGE_MAX_W = 400;
+  const BATTERY_GAUGE_DEADBAND_W = 10;
+  const BATTERY_GAUGE_KNEE_W = 50;
+  const BATTERY_GAUGE_SWEEP_DEG = 110;
+
+  // Liefert die Position -1 ... +1 auf der Skala. Stetig am Rand des Totbereichs, 1 bei +-400 W.
+  function batteryGaugePosition(powerW) {
+    const magnitude = Math.min(Math.abs(powerW), BATTERY_GAUGE_MAX_W);
+    if (magnitude <= BATTERY_GAUGE_DEADBAND_W) return 0;
+    const knee = BATTERY_GAUGE_KNEE_W;
+    const position = Math.log(1 + (magnitude - BATTERY_GAUGE_DEADBAND_W) / knee)
+      / Math.log(1 + (BATTERY_GAUGE_MAX_W - BATTERY_GAUGE_DEADBAND_W) / knee);
+    return Math.sign(powerW) * position;
+  }
+
   function batteryFlowGauge(powerW) {
-    const maximum = 500;
+    const maximum = BATTERY_GAUGE_MAX_W;
     const available = Number.isFinite(powerW);
     const bounded = clamp(available ? powerW : 0, -maximum, maximum);
-    const angle = (bounded / maximum) * 110;
+    const angle = batteryGaugePosition(bounded) * BATTERY_GAUGE_SWEEP_DEG;
     const arcPoint = (value, radius = 86) => {
-      const radians = (-110 + ((value + maximum) / (2 * maximum)) * 220) * Math.PI / 180;
+      const radians = batteryGaugePosition(value) * BATTERY_GAUGE_SWEEP_DEG * Math.PI / 180;
       return { x: 110 + Math.sin(radians) * radius, y: 100 - Math.cos(radians) * radius };
     };
     const arcPath = (startValue, endValue) => {
@@ -194,21 +212,21 @@
       const end = arcPoint(endValue);
       return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} A 86 86 0 0 1 ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
     };
-    const ticks = [-500, -250, 0, 250, 500].map((value) => {
+    const ticks = [-400, -200, -100, -50, 0, 50, 100, 200, 400].map((value) => {
       const outer = arcPoint(value, 86);
       const inner = arcPoint(value, 74);
       const label = arcPoint(value, 62);
       return `<line x1="${inner.x.toFixed(1)}" y1="${inner.y.toFixed(1)}" x2="${outer.x.toFixed(1)}" y2="${outer.y.toFixed(1)}"></line><text x="${label.x.toFixed(1)}" y="${(label.y + 3).toFixed(1)}">${Math.abs(value)}</text>`;
     }).join("");
     return `
-      <svg class="battery-flow-svg" viewBox="0 0 220 145" role="img" aria-label="Batterieleistung ${available ? `${number(bounded)} Watt` : "nicht verfügbar"}">
+      <svg class="battery-flow-svg" viewBox="0 0 220 157" role="img" aria-label="Batterieleistung ${available ? `${number(bounded)} Watt` : "nicht verfügbar"}">
         <path class="battery-flow-discharge" d="${arcPath(-maximum, 0)}"></path>
         <path class="battery-flow-charge" d="${arcPath(0, maximum)}"></path>
         <g class="battery-flow-ticks">${ticks}</g>
         <g class="battery-flow-needle ${available ? "" : "unavailable"}" style="transform: rotate(${angle}deg)"><path d="M 106 100 L 110 22 L 114 100 Z"></path></g>
         <circle class="gauge-hub" cx="110" cy="100" r="8"></circle>
-        <text class="battery-flow-side discharge" x="20" y="138">Entladen</text>
-        <text class="battery-flow-side charge" x="200" y="138" text-anchor="end">Laden</text>
+        <text class="battery-flow-side discharge" x="20" y="150">Entladen</text>
+        <text class="battery-flow-side charge" x="200" y="150" text-anchor="end">Laden</text>
       </svg>`;
   }
 
@@ -219,8 +237,36 @@
     return "Akkustrom nicht gemessen";
   }
 
+  // Alle moeglichen Badge-Texte liegen uebereinander in derselben Grid-Zelle (die inaktiven unsichtbar).
+  // Das Badge hat dadurch immer die Groesse des laengsten Textes, und das Layout springt beim Wechsel nicht.
+  const FLOW_STATES = ["charging", "discharging", "balanced", "unknown"];
+
+  function renderFlowBadge(flowState) {
+    const active = flowCopy(flowState);
+    elements.flowBadge.dataset.state = flowState;
+    elements.flowBadge.innerHTML = FLOW_STATES.map((name) => {
+      const text = flowCopy(name);
+      return text === active ? `<span>${text}</span>` : `<span class="flow-ghost" aria-hidden="true">${text}</span>`;
+    }).join("");
+  }
+
   function riderLabel(rider) {
     return rider.riderName || `Fahrer ${rider.riderId}`;
+  }
+
+  // Balken "Gerade erzeugt": 0-500 W, bis 150 W orange, darueber gruen.
+  // Hysterese: Zurueck auf orange erst unter 100 W (50 W Abstand), damit der Balken nicht flackert.
+  const GENERATED_BAR_MAX_W = 500;
+  const GENERATED_BAR_GREEN_ABOVE_W = 150;
+  const GENERATED_BAR_ORANGE_BELOW_W = 100;
+  let generatedBarGreen = false;
+
+  function updateGeneratedBar(powerW) {
+    if (powerW > GENERATED_BAR_GREEN_ABOVE_W) generatedBarGreen = true;
+    else if (powerW < GENERATED_BAR_ORANGE_BELOW_W) generatedBarGreen = false;
+    if (!elements.generatedBar) return;
+    elements.generatedBar.style.width = `${clamp(powerW / GENERATED_BAR_MAX_W, 0, 1) * 100}%`;
+    elements.generatedBar.dataset.state = generatedBarGreen ? "good" : "low";
   }
 
   function updateOverview() {
@@ -229,9 +275,9 @@
     elements.batteryPower.textContent = numberOrDash(state.system.batteryPowerW);
     elements.batteryVoltage.textContent = numberOrDash(state.system.batteryVoltage, 2);
     elements.batteryCurrent.textContent = numberOrDash(state.system.batteryCurrentA, 2);
-    elements.flowBadge.dataset.state = state.system.state;
-    elements.flowBadge.textContent = flowCopy(state.system.state);
+    renderFlowBadge(state.system.state);
     elements.generatedPower.textContent = number(generatedPowerW);
+    updateGeneratedBar(generatedPowerW);
     elements.loadPower.textContent = numberOrDash(state.system.loadPowerW);
     if (elements.clientCount) elements.clientCount.textContent = number(state.system.connectedClients);
     elements.bikeGrid.innerHTML = state.bikes.map((bike) => `
@@ -432,7 +478,7 @@
 
   function calibrationPoint(point, sensor, channel, unit) {
     const calibrated = point?.calibrated === true;
-    const value = unit === "A" ? point?.valueA : point?.valueV;
+    const value = point?.valueV;
     const voltageAveraging = state.calibration?.voltage?.averaging || {};
     const voltageBusy = sensor === "voltage" && voltageAveraging.active === true;
     const isActiveVoltagePoint = voltageBusy && Number(voltageAveraging.point) === Number(point?.index);
@@ -468,9 +514,9 @@
     const batteryCurrent = calibration.batteryCurrent || {
       liveRaw: state.measurements.batteryCurrent?.adcRaw, points: [],
     };
-    const batteryCurrentPoints = [{ index: 0, valueA: -4 }, { index: 2, valueA: 0 }, { index: 4, valueA: 4 }].map(({ index, valueA }) => ({
-      valueA, index, ...(batteryCurrent.points?.[index] || {}),
-    }));
+    const batteryZeroCalibration = batteryCurrent.zeroCalibration || { active: false, durationMs: 30000, elapsedMs: 0, sampleCount: 0 };
+    const batteryZeroProgress = clamp((batteryZeroCalibration.elapsedMs || 0) / Math.max(1, batteryZeroCalibration.durationMs || 30000) * 100, 0, 100);
+    const batteryZeroPoint = batteryCurrent.points?.[0] || {};
 
     elements.calibrationSensors.innerHTML = `
       <article class="panel calibration-card voltage-calibration">
@@ -480,11 +526,14 @@
         <small class="zero-progress-copy">${voltageAveraging.active ? `${voltageReference} V · ${Math.ceil(((voltageAveraging.durationMs || 30000) - (voltageAveraging.elapsedMs || 0)) / 1000)} s verbleibend · ${voltageAveraging.sampleCount || 0} Messfenster` : "8 V oder 14 V einstellen und 30 Sekunden messen"}</small>
       </article>
       <article class="panel calibration-card battery-current-calibration">
-        <div class="calibration-card-head"><div><p class="eyebrow">Bidirektionaler Stromsensor · GPIO32</p><h3>Batteriestrom</h3></div><div class="live-raw"><small>Live · ${calibration.averagingWindowMs || 500} ms</small><strong>${batteryCurrent.liveRaw ?? "–"}</strong></div></div>
-        <div class="calibration-points">${batteryCurrentPoints.map((point) => calibrationPoint(point, "batteryCurrent", null, "A")).join("")}</div>
+        <div class="calibration-card-head"><div><p class="eyebrow">Bidirektionaler Stromsensor · GPIO32 · Fester Faktor ${number(batteryCurrent.rawPerAmp || 27.5, 1)} Digits/A</p><h3>Nullpunkt Batteriestrom</h3></div><button class="primary-button zero-calibration-start" type="button" data-battery-current-zero-calibration ${batteryZeroCalibration.active ? "disabled" : ""}>${batteryZeroCalibration.active ? "Messung läuft …" : "Nullpunkt 30 s messen"}</button></div>
+        <p class="zero-calibration-note">Vor dem Start sicherstellen, dass durch den Batteriestromsensor 0 A fließen. Der Nullpunkt wird über 30 Sekunden gemittelt und anschließend dauerhaft gespeichert.</p>
+        <div class="zero-channels"><div class="zero-channel"><strong>Batteriestrom</strong><span>Live ${batteryCurrent.liveRaw ?? "–"}</span><span>Nullpunkt ${batteryZeroPoint.calibrated ? batteryZeroPoint.raw : "–"}</span></div></div>
+        <div class="zero-progress" aria-label="Fortschritt Nullpunktmessung Batteriestrom"><span style="width:${batteryZeroProgress}%"></span></div>
+        <small class="zero-progress-copy">${batteryZeroCalibration.active ? `${Math.ceil(((batteryZeroCalibration.durationMs || 30000) - (batteryZeroCalibration.elapsedMs || 0)) / 1000)} s verbleibend · ${batteryZeroCalibration.sampleCount || 0} Messfenster` : "Bereit"}</small>
       </article>
       <article class="panel calibration-card bike-zero-calibration">
-        <div class="calibration-card-head"><div><p class="eyebrow">Fester Faktor · ${number(calibration.currentRawPerAmp || 43.5, 1)} Digits/A</p><h3>Nullpunkte aller Bike-Sensoren</h3></div><button class="primary-button zero-calibration-start" type="button" data-current-zero-calibration ${zeroCalibration.active ? "disabled" : ""}>${zeroCalibration.active ? "Messung läuft …" : "Nullpunkte 30 s messen"}</button></div>
+        <div class="calibration-card-head"><div><p class="eyebrow">Fester Faktor · ${number(calibration.currentRawPerAmp || 66.9, 1)} Digits/A</p><h3>Nullpunkte aller Bike-Sensoren</h3></div><button class="primary-button zero-calibration-start" type="button" data-current-zero-calibration ${zeroCalibration.active ? "disabled" : ""}>${zeroCalibration.active ? "Messung läuft …" : "Nullpunkte 30 s messen"}</button></div>
         <p class="zero-calibration-note">Vor dem Start sicherstellen, dass durch alle vier Bike-Sensoren 0 A fließen. Die vier Nullpunkte werden gleichzeitig über 30 Sekunden gemittelt und anschließend dauerhaft gespeichert.</p>
         <div class="zero-channels">${currentZeroRows}</div>
         <div class="zero-progress" aria-label="Fortschritt Nullpunktmessung"><span style="width:${zeroProgress}%"></span></div>
@@ -747,6 +796,16 @@
     showToast("30-Sekunden-Nullpunktmessung gestartet");
   }
 
+  function startBatteryCurrentZeroCalibration() {
+    if (state.demoMode || socket?.readyState !== WebSocket.OPEN) {
+      showToast("Nullpunktmessung benötigt eine Live-Verbindung zum ESP32");
+      return;
+    }
+    if (!window.confirm("Fließen sicher 0 A durch den Batteriestromsensor?")) return;
+    socket.send(JSON.stringify({ type: "batteryCurrentZeroCalibration", password: calibrationPassword }));
+    showToast("30-Sekunden-Nullpunktmessung Batteriestrom gestartet");
+  }
+
   document.querySelectorAll(".view-nav button").forEach((button) => {
     button.addEventListener("click", () => {
       navigate(button.dataset.view);
@@ -772,9 +831,11 @@
   });
   elements.calibrationSensors?.addEventListener("click", (event) => {
     const zeroButton = event.target.closest("[data-current-zero-calibration]");
+    const batteryZeroButton = event.target.closest("[data-battery-current-zero-calibration]");
     const saveButton = event.target.closest(".calibration-save");
     const clearButton = event.target.closest(".calibration-clear");
     if (zeroButton) startCurrentZeroCalibration();
+    else if (batteryZeroButton) startBatteryCurrentZeroCalibration();
     else if (saveButton) changeCalibration(saveButton, true);
     else if (clearButton) changeCalibration(clearButton, false);
   });

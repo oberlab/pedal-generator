@@ -154,8 +154,8 @@ Der aktuelle Schaltplan besitzt vier Generator-Stromsensoren und einen
 Spannungsteiler für die Batteriespannung. Der nächste freie, auch bei aktivem
 WLAN nutzbare ADC1-Eingang ist **GPIO32**. Die Firmware reserviert ihn für einen
 bidirektionalen Batteriestromsensor. Positive Stromwerte bedeuten Laden,
-negative Entladen. Erst nach mindestens zwei gespeicherten Kalibrierpunkten
-werden `batteryCurrentA`, `batteryPowerW` und `system.state` ausgegeben; vorher
+negative Entladen. Erst nach gespeichertem Nullpunkt (30-Sekunden-Messung unter
+`/config` → Kalibrieren) werden `batteryCurrentA`, `batteryPowerW` und `system.state` ausgegeben; vorher
 bleiben die Leistungswerte `null` und der Zustand `unknown`. Für 500 W an einem
 12-V-System muss Sensor, Leiterbahn und Sicherung mindestens rund 42 A tragen;
 praktisch ist ein bidirektionaler Sensor mit wenigstens ±50 A sinnvoll.
@@ -168,12 +168,14 @@ transportieren denselben Zustand per WebSocket.
 ## ADC-Kalibrierung am aufgebauten Gerät
 
 Unter **`/config` → Kalibrieren** lassen sich die Kennlinien direkt am
-aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren gilt eine
-gemeinsame Steigung in ADC-Digits/A, die sich aus dem Spannungsteiler ergibt
-(Standard 30 kΩ/100 kΩ: 66,9 Digits/A, siehe `config.json`). Die
+aufgebauten Gerät erfassen. Für alle vier Bike-Stromsensoren ist die gemeinsame
+Steigung von 66,9 ADC-Digits/A (Spannungsteiler 30 kΩ/100 kΩ) fest in der
+Firmware hinterlegt. Die
 Oberfläche ermittelt deshalb nur noch die vier individuellen Nullpunkte
-gleichzeitig über 30 Sekunden. Für den bidirektionalen Batteriestromsensor sind
--4, 0 und +4 A und für den Spannungssensor 8 und 14 V vorgesehen.
+gleichzeitig über 30 Sekunden. Der bidirektionale Batteriestromsensor (GPIO32)
+hat ebenfalls einen festen Faktor (27,5 Digits/A) und einen eigenen Nullpunkt, der
+in einem getrennten 30-Sekunden-Vorgang gemessen wird. Für den Spannungssensor
+sind 8 und 14 V vorgesehen.
 Der Bereich und alle schreibenden Kalibrierbefehle sind mit dem vorläufigen
 Passwort `pedalkino` geschützt. Die Seite zeigt den
 aktuellen 500-ms-Mittelwert sowie Status und gespeicherte Rohwerte.
@@ -219,13 +221,11 @@ Referenzmessgerät erfasst.
 ### Strommessung GPIO36/39/34/35
 
 Die Hall-Strombahnen der ACS712 sind galvanisch von ihren ADC-Ausgängen
-getrennt. Die Steigung ergibt sich aus dem Spannungsteiler (Standard
-30 kΩ/100 kΩ, 66,9 ADC-Digits/A, überschreibbar in `config.json`); die
-kanalabhängigen Nullpunkte werden gemeinsam bestimmt. Gespeicherte Nullpunkte
-gelten nur für den Teiler, mit dem sie gemessen wurden: Passt das beim Start
-ermittelte Teilerverhältnis nicht zum gespeicherten (zum Beispiel nach dem Wechsel
-von 22 kΩ/22 kΩ auf 30 kΩ/100 kΩ), werden sie ignoriert und die Nullpunktmessung
-muss wiederholt werden. Bis dahin gilt ein geschätzter Nullpunkt.
+getrennt. Die Steigung ist fest auf 66,9 ADC-Digits/A eingestellt (43,5 Digits/A
+beim früheren 22 kΩ/22 kΩ-Teiler, skaliert mit dem Teilerverhältnis); die
+kanalabhängigen Nullpunkte werden gemeinsam bestimmt. Nach einem Wechsel des
+Teilers müssen die Nullpunkte neu gemessen werden, da gespeicherte Rohwerte nur
+für den alten Teiler gelten.
 
 1. Platine und alle ACS712 mit 5 V versorgen, durch ihre Strompfade aber keinen
    Strom schicken.
@@ -241,13 +241,15 @@ muss wiederholt werden. Bis dahin gilt ein geschätzter Nullpunkt.
 
 ### Bidirektionale Batteriestrommessung GPIO32
 
-GPIO32 ist in der Firmware als nächster freier ADC1-Kanal vorgesehen. Der noch
-auszuwählende Sensor muss in beiden Richtungen messen und samt Strompfad für
-mindestens 500 W beziehungsweise etwa 42 A bei 12 V ausgelegt sein. Vor dem
-Anschluss muss sein Analogausgang auf den ESP32-Bereich von 0 bis 3,3 V begrenzt
-werden. Zuerst den Nullpunkt ohne Batteriestrom speichern, danach mindestens je
-einen genau gemessenen Lade- und Entladestrom. Die vorzeichenrichtige Montage
-ist erreicht, wenn Ladestrom positiv und Entladestrom negativ angezeigt wird.
+GPIO32 ist in der Firmware als nächster freier ADC1-Kanal vorgesehen. Der
+Schaltplan sieht dafür einen WCS1600 mit Spannungsteiler 20 kΩ/100 kΩ vor. Die
+Steigung ist fest auf 27,5 ADC-Digits/A eingestellt (gemessen mit ±4 A DC: Rohwert
+2467 bei −4 A, 2687 bei +4 A). Bis zur Nullpunktmessung gilt der Mittelwert 2577.
+Zur Kalibrierung unter **`/config` → Kalibrieren → Nullpunkt Batteriestrom** den
+Strom durch den Sensor auf 0 A bringen und die 30-Sekunden-Messung starten. Sie
+ist unabhängig von der Nullpunktmessung der Bike-Sensoren. Die vorzeichenrichtige
+Montage ist erreicht, wenn Ladestrom positiv und Entladestrom negativ angezeigt
+wird.
 
 Anfangs fahren Fahrer 1 bis 4 auf Bike 1 bis 4. **Nächster Fahrer** übernimmt
 das Ergebnis des bisherigen Fahrers in die Rangliste, vergibt die nächste freie
@@ -287,32 +289,6 @@ Minimum/-Maximum, 5-V-Versorgung und Sensortemperatur als CSV festgehalten
 werden. Anschließend werden unabhängige Zwischenpunkte geprüft; sie dürfen nicht
 dieselben Punkte sein, aus denen die Kurve erzeugt wurde.
 
-### Parameterdatei `config.json`
-
-Die Umrechnung von ADC-Rohwerten in Strom und Spannung sowie einige Schwellwerte
-stehen in `data/config.json` (LittleFS, Upload mit `pio run --target uploadfs`).
-Die Datei wird beim Start gelesen. Fehlt sie oder ein Eintrag, ungültige oder
-unplausible Werte kommen vor, gilt der Standardwert aus dem Code; die Firmware
-meldet das auf der seriellen Schnittstelle.
-
-| Schlüssel | Standard | Bedeutung |
-| --- | --- | --- |
-| `currentSensors.dividerUpperOhm` | 30000 | Längswiderstand (R1/R3/R5/R7) |
-| `currentSensors.dividerLowerOhm` | 100000 | Widerstand nach GND (R2/R4/R6/R14) |
-| `currentSensors.rawPerAmp` | 0 | Steigung in Digits/A; 0 = aus dem Teiler berechnet |
-| `currentSensors.zeroRaw` | 2170 | geschätzter Nullpunkt bis zur Nullpunktmessung |
-| `batteryVoltage.rawPerVolt` | 218,33 | Steigung ohne Kalibrierpunkte |
-| `batteryCurrent.rawPerAmp` / `.zeroRaw` | 24,82 / 1551 | Vorgaben des Batteriestromkanals |
-| `thresholds.currentNoiseFloorA` | 0,10 | Strom darunter gilt als 0 A |
-| `thresholds.bikePowerNoiseFloorW` | 5 | Leistung darunter gilt als 0 W |
-| `thresholds.significantPowerChangeW` | 10 | Änderung, die sofort gesendet wird |
-
-Die berechnete Steigung ist `43,5 · Verhältnis / 0,5` mit
-`Verhältnis = unten / (oben + unten)`; 43,5 Digits/A wurden mit dem früheren
-22 kΩ/22 kΩ-Teiler gemessen. Die wirksamen Werte liefert
-`/calibration.json` (`currentRawPerAmp`, `currentDivider`).
-`config.json` wird von der Kalibriersicherung nicht überschrieben.
-
 ### Konfiguration an den ESP32
 
 ```json
@@ -331,7 +307,6 @@ Die vier Positionen entsprechen Bike 1 bis Bike 4. Die Firmware speichert die Au
 ├── data/              Weboberfläche für LittleFS
 │   ├── index.html
 │   ├── config.html
-│   ├── config.json    Umrechnungsparameter und Schwellwerte
 │   ├── app.css
 │   └── app.js
 ├── qr_codes/          WLAN-, Live- und Admin-QR-Codes (PNG/SVG)
